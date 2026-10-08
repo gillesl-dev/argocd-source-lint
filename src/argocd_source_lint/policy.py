@@ -2,9 +2,10 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from ruamel.yaml import YAML
 
+from argocd_source_lint.argocd_versions import parse_version
 from argocd_source_lint.models import KnownOperatorSignature, Severity
 
 DEFAULT_RULE_SEVERITIES: dict[str, Severity] = {
@@ -33,9 +34,21 @@ class Policy(BaseModel):
     unverifiable_blocks_ci: bool = True
     exclude_paths: list[str] = Field(default_factory=list)
     # Signatures added on top of the built-in community pack
-    # (`rules/known-operators.yaml`, used by missing-ignore-diff) — never a
+    # (`rules/known-operators.yaml`, used by missing-ignore-diff); never a
     # replacement, always a complement for internal operators.
     known_operators: list[KnownOperatorSignature] = Field(default_factory=list)
+    # Narrows unknown-sync-option/unknown-resource-hook to what this exact
+    # ArgoCD version actually recognizes (see argocd_versions.py). Left unset,
+    # both rules keep accepting every value ArgoCD has EVER recognized,
+    # regardless of version: today's behavior, unchanged.
+    argocd_version: str | None = None
+
+    @field_validator("argocd_version")
+    @classmethod
+    def _validate_argocd_version(cls, value: str | None) -> str | None:
+        if value is not None:
+            parse_version(value)  # raises ValueError -> wrapped as a clear pydantic error
+        return value
 
 
 def load_policy(repo_root: Path, filename: str = ".argocd-lint.yaml") -> Policy:
@@ -51,7 +64,13 @@ def load_policy(repo_root: Path, filename: str = ".argocd-lint.yaml") -> Policy:
         raw = yaml.load(f) or {}
 
     merged = Policy().model_dump()
-    for key in ("scan_roots", "unverifiable_blocks_ci", "exclude_paths", "known_operators"):
+    for key in (
+        "scan_roots",
+        "unverifiable_blocks_ci",
+        "exclude_paths",
+        "known_operators",
+        "argocd_version",
+    ):
         if key in raw:
             merged[key] = raw[key]
     if "rules" in raw:

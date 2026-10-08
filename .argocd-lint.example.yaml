@@ -29,3 +29,11 @@ unverifiable_blocks_ci: true
 
 exclude_paths:
   - manifests/legacy/**
+
+# Narrows unknown-sync-option/unknown-resource-hook to what this exact
+# ArgoCD version actually recognizes. Omit it (the default) and both rules
+# keep accepting every value ArgoCD has ever recognized, regardless of
+# version -- e.g. `Prune`/`Delete` as Application-level syncOptions keys
+# only work from ArgoCD 3.4.0 onward; declaring an older version here
+# catches that real silent no-op.
+# argocd_version: "3.2.0"

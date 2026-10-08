@@ -118,6 +118,74 @@ metadata:
     assert findings == []
 
 
+def test_predelete_hook_flagged_below_introducing_version(git_repo):
+    """`PreDelete` only exists since ArgoCD 3.3.0."""
+    repo_root = git_repo(
+        {
+            ".argocd-lint.yaml": "argocd_version: '3.2.0'\n",
+            "bootstrap/argocd-apps/web.yaml": _APP,
+            "manifests/web/job.yaml": """\
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: migrate
+  annotations:
+    argocd.argoproj.io/hook: PreDelete
+""",
+        }
+    )
+
+    findings = _run_rule(repo_root)
+
+    assert len(findings) == 1
+    assert "3.3.0" in findings[0].message
+    assert "3.2.0" in findings[0].message
+
+
+def test_predelete_hook_not_flagged_at_or_above_introducing_version(git_repo):
+    repo_root = git_repo(
+        {
+            ".argocd-lint.yaml": "argocd_version: '3.3.0'\n",
+            "bootstrap/argocd-apps/web.yaml": _APP,
+            "manifests/web/job.yaml": """\
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: migrate
+  annotations:
+    argocd.argoproj.io/hook: PreDelete
+""",
+        }
+    )
+
+    findings = _run_rule(repo_root)
+
+    assert findings == []
+
+
+def test_all_known_hook_values_not_flagged_even_with_old_declared_version(git_repo):
+    """The oldest hooks (PreSync/Sync/Skip/PostSync) predate ArgoCD's own
+    versioning scheme (0.6.1): any realistic declared version accepts them."""
+    repo_root = git_repo(
+        {
+            ".argocd-lint.yaml": "argocd_version: '1.0.0'\n",
+            "bootstrap/argocd-apps/web.yaml": _APP,
+            "manifests/web/job.yaml": """\
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: migrate
+  annotations:
+    argocd.argoproj.io/hook: PreSync,Sync,Skip,PostSync
+""",
+        }
+    )
+
+    findings = _run_rule(repo_root)
+
+    assert findings == []
+
+
 def test_no_hook_annotations_is_not_flagged(git_repo):
     repo_root = git_repo(
         {

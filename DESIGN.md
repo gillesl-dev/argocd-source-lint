@@ -324,7 +324,7 @@ Namespace defaults to `"argocd"` when omitted.
 
 `ignoreDifferences[].jsonPointers` follows
 [RFC 6901](https://www.rfc-editor.org/rfc/rfc6901): pointers must begin with `/`.
-Values such as `spec.replicas` therefore do not match the intended field.
+A value such as `spec.replicas` doesn't match the intended field.
 
 The rule checks only this objective syntax requirement.
 
@@ -363,12 +363,58 @@ This rule was treated with lower confidence during prioritization because ArgoCD
 accepted values clearly, but the exact runtime behavior of an unknown hook value is less explicit
 than the behavior of an unknown sync option.
 
+## ArgoCD version awareness (`argocd_versions.py`)
+
+Both rules above originally treated their closed sets as always valid, regardless of
+which ArgoCD version a user's cluster actually runs. That's wrong in one concrete,
+verified direction: a value can be correctly spelled and still be a silent no-op simply
+because it's newer than the user's ArgoCD. `Prune`/`Delete` as Application-level
+`syncOptions` keys are the clearest case -- they only work from ArgoCD 3.4.0 onward; on
+any older version ArgoCD silently ignores them there (they only existed as the
+per-resource annotation before that).
+
+`.argocd-lint.yaml`'s optional `argocd_version` setting addresses this: when declared,
+`argocd_versions.is_known` narrows each table to the subset actually available as of
+that version. Left unset, both rules keep accepting every value ArgoCD has ever
+recognized -- the original, version-blind behavior, unchanged.
+
+**Sourcing method, exactly, because this is the kind of claim this project refuses to
+estimate:** a full clone of `argoproj/argo-cd`, then for each of the 24 values `git log
+--pickaxe-regex -S'\bValue\b'` against `docs/user-guide/sync-options.md` (sync option
+keys) or the hook-docs file's full rename chain (`docs/resoure_hooks.md` →
+`docs/resource_hooks.md` → `docs/user-guide/resource_hooks.md` →
+`docs/user-guide/sync-waves.md`, hook/delete-policy values) to find the commit that
+first introduced that exact string, then `git tag --contains <commit>` filtered to
+`vX.Y.Z` tags, sorted, to find the earliest release containing it. Plain-word
+pickaxe search was unusable for short keys (`Prune` is a substring of
+`PrunePropagationPolicy`); `--pickaxe-regex` with a `\b`-bounded pattern fixed that.
+`git tag --contains --merged origin/master` returned nothing useful because this repo's
+tag history is dominated by release-branch cherry-picks, not a linear path to master —
+plain `git tag --contains` (no `--merged`) is what actually works here.
+
+Two values needed the commit itself inspected, not just the docs: `Prune` and `Delete`
+were valid as the per-resource annotation since 1.1.0/2.7.0, but the Application-level
+form is a distinct, later code change (`argoproj/argo-cd#23370`,
+"feat: add Prune and Delete as application level sync option", first in `v3.4.0`) --
+confirmed by reading the diff, not inferred from the docs commit alone.
+`ClientSideApplyMigration` is a rename, not a new feature: the capability shipped in
+`v3.1.0` as `DisableClientSideApplyMigration=true`, renamed to its current spelling in
+`v3.3.0`. `CreateNamespace`'s code shipped in `v1.7.0` but wasn't documented in
+`sync-options.md` until `v2.5.0` -- the table uses the real (earlier) code date, not the
+docs date, in that one case; `Replace`'s per-resource form has the same kind of lag and
+is handled the same way.
+
+This table is accurate as of the research date (2026-10-08) and is a manual snapshot,
+not something CI re-verifies against upstream on every run -- the same caveat that
+already applies to the rest of this tool's closed vocabularies (see `unknown-sync-option`
+above).
+
 ## `malformed-sync-wave`
 
 ArgoCD parses `argocd.argoproj.io/sync-wave` with Go's `strconv.Atoi`. Invalid values
 fall back to wave `0`.
 
-The rule therefore checks whether the annotation is a valid signed integer.
+The rule checks whether the annotation is a valid signed integer.
 
 ## `broken-values-ref`'s plain `valueFiles` check
 
