@@ -21,7 +21,7 @@ def test_every_rule_class_is_registered_in_cli_rules():
     """A `Rule` subclass that exists under `rules/` but is never added to
     `cli.RULES` would otherwise stay invisible to every test here: its
     own unit test instantiates it and calls `.check()` directly, so it
-    can pass while the real CLI never runs it at all -- confirmed for
+    can pass while the real CLI never runs it at all; confirmed for
     real, not hypothetical: a throwaway rule module left this way left
     the full suite green. `pkgutil.iter_modules` force-imports every
     module under `rules/` first, so a rule nobody imports yet is still
@@ -42,7 +42,7 @@ def test_every_rule_has_a_default_severity():
     """The same silent-omission risk as the test above, one dict over:
     `policy.DEFAULT_RULE_SEVERITIES` is maintained by hand too, and a
     rule missing from it would still run (its own `.get(RULE_ID, ...)`
-    fallback covers that), but silently drop out of `Policy().rules` --
+    fallback covers that), but silently drop out of `Policy().rules`:
     e.g. a future feature that lists every configurable rule and its
     severity would miss it with no test ever noticing. `unresolvable-
     generator` is the one deliberate exception: its findings come from
@@ -127,7 +127,7 @@ def test_stale_baseline_entry_is_reported_but_does_not_block_ci(fixture_repo, gi
     repo_root = fixture_repo("bad_phantom_target")
     runner.invoke(app, [str(repo_root), "--write-baseline"])
     # The underlying issue is fixed: the missing path now exists
-    # (committed -- phantom-target resolves paths via `git ls-tree`, not
+    # (committed: phantom-target resolves paths via `git ls-tree`, not
     # the raw working tree, see DESIGN.md "targetRevision drift").
     git_commit(
         repo_root,
@@ -196,6 +196,22 @@ spec:
     result = runner.invoke(app, [str(repo_root)])
 
     assert result.exit_code == 0
+
+
+def test_malformed_policy_exits_2_with_a_clear_error_instead_of_a_traceback(git_repo):
+    repo_root = git_repo(
+        {
+            ".argocd-lint.yaml": "argocd_version: 'not-a-version'\n",
+            "manifests/.gitkeep": "",
+        }
+    )
+
+    result = runner.invoke(app, [str(repo_root)])
+
+    assert result.exit_code == 2
+    assert isinstance(result.exception, SystemExit)
+    assert "argocd_version" in result.stdout
+    assert "not a valid ArgoCD version" in result.stdout
 
 
 def test_json_format_prints_to_stdout(fixture_repo):

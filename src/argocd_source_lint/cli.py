@@ -4,6 +4,7 @@ from enum import Enum
 from pathlib import Path
 
 import typer
+from pydantic import ValidationError
 from rich.console import Console
 
 from argocd_source_lint import applicationset, tool_version
@@ -123,7 +124,15 @@ def lint(
     clear_git_caches()
     clear_discovery_cache()
     clear_coverage_cache()
-    policy = load_policy(repo_root)
+    try:
+        policy = load_policy(repo_root)
+    except ValidationError as exc:
+        console.print(f"[red]Invalid {repo_root / '.argocd-lint.yaml'}:[/red]")
+        for error in exc.errors():
+            field = ".".join(str(part) for part in error["loc"])
+            message = error["msg"].removeprefix("Value error, ")
+            console.print(f"  [red]{field}:[/red] {message}")
+        raise typer.Exit(code=2) from None
     applications = RawManifestDiscovery().discover(repo_root)
     local_origin = get_origin_url(repo_root)
 
