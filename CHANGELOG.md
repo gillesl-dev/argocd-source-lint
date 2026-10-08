@@ -3,6 +3,25 @@
 All notable changes to this project are documented in this file, following
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.1.0] - 2026-10-08
+
+### Added
+
+- Added the optional `argocd_version` setting, narrowing `unknown-sync-option` and
+  `unknown-resource-hook` to the sync options/hooks actually available on that ArgoCD
+  version instead of every value ArgoCD has ever recognized. Every introduction version
+  was traced to the real `argoproj/argo-cd` commit that shipped it, not estimated — see
+  DESIGN.md. Omitting the setting keeps the previous, version-blind behavior.
+
+### Fixed
+
+- `Prune`/`Delete` were treated as always-valid Application-level `syncOptions` keys.
+  They only became valid there in ArgoCD 3.4.0 (confirmed against the introducing code
+  commit, not just docs) — before that, only the per-resource annotation form worked.
+  Declaring an older `argocd_version` now catches this as a real silent no-op.
+- An invalid `.argocd-lint.yaml` (e.g. a malformed `argocd_version`) now exits with a
+  clear, field-by-field message and exit code 2 instead of a raw Python traceback.
+
 ## [1.0.2] - 2026-09-23
 
 ### Changed
