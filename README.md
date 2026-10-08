@@ -306,7 +306,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: gillesl-dev/argocd-source-lint@v1.1.0
+      - uses: gillesl-dev/argocd-source-lint@v1.1.1
         with:
           path: .
 ```
@@ -325,7 +325,7 @@ Then include the component using a tag, branch, or commit SHA:
 
 ```yaml
 include:
-  - component: $CI_SERVER_FQDN/<your-gitlab-group>/argocd-source-lint/lint@v1.1.0
+  - component: $CI_SERVER_FQDN/<your-gitlab-group>/argocd-source-lint/lint@v1.1.1
     inputs:
       scope: manifests/
 ```
@@ -337,7 +337,7 @@ You don't have to publish the component in the GitLab CI/CD Catalog. A normal `i
 ```yaml
 repos:
   - repo: https://github.com/gillesl-dev/argocd-source-lint
-    rev: v1.1.0
+    rev: v1.1.1
     hooks:
       - id: argocd-source-lint
 ```

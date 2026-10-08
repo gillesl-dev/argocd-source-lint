@@ -3,6 +3,13 @@
 All notable changes to this project are documented in this file, following
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.1.1] - 2026-10-08
+
+### Fixed
+
+- README's GitHub Action/GitLab CI/pre-commit examples still pinned `v1.0.2`, one version
+  behind what `v1.1.0` actually shipped. The Python package itself is unchanged.
+
 ## [1.1.0] - 2026-10-08
 
 ### Added
