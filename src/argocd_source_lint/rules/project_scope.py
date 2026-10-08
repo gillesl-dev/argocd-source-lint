@@ -22,7 +22,7 @@ RULE_ID = "project-scope-violation"
 class ProjectScopeViolationRule(Rule):
     """An Application's `spec.project` restricts which repos it may sync
     from and which destinations it may sync to
-    (`AppProject.spec.sourceRepos`/`destinations`) — ArgoCD refuses to
+    (`AppProject.spec.sourceRepos`/`destinations`); ArgoCD refuses to
     sync outside that scope. From a Git-only point of view that failure
     is silent: nothing in the repo itself looks wrong, it only shows up
     as a live Application condition once ArgoCD tries. Fully static:
@@ -46,7 +46,7 @@ class ProjectScopeViolationRule(Rule):
             project = projects_by_name.get(app.project)
             if project is None:
                 # "default" not found in the repo: assumed to be
-                # ArgoCD's own auto-created, permissive one -- flagging
+                # ArgoCD's own auto-created, permissive one; flagging
                 # it would be noise on the overwhelming majority of
                 # repos that never declare it at all.
                 if app.project != "default":
@@ -98,7 +98,7 @@ def _check_source_repos(app: Application, project: AppProject, severity: Severit
 
 def _check_destination(app: Application, project: AppProject, severity: Severity) -> list[Finding]:
     if app.destination_server is None and app.destination_name is None:
-        return []  # nothing declared to compare -- not this rule's business
+        return []  # nothing declared to compare, not this rule's business
 
     if not project.destinations:
         return [
@@ -182,7 +182,7 @@ def _source_repo_matches(pattern: str, repo_url: str) -> bool:
 def _destination_field_matches(pattern: str, value: str) -> bool:
     """ArgoCD's destinations matching (`server`/`name`/`namespace`),
     confirmed against `AppProject.isDestinationMatched`'s actual source:
-    an *unbounded* glob, no `/`-segment-awareness — unlike sourceRepos.
+    an *unbounded* glob, no `/`-segment-awareness, unlike sourceRepos.
     `fnmatchcase` (not `fnmatch`, which lowercases on Windows) to stay
     correct regardless of the host OS: a namespace/server/cluster name
     is case-sensitive data, not a filesystem path."""

@@ -261,7 +261,7 @@ spec:
 def test_directory_exclude_suppresses_coverage_of_matched_file(git_repo):
     """Reproduces the real app-of-apps pattern of `bootstrap-apps.yaml`:
     `exclude` removes the file from ITS OWN coverage (ArgoCD can't deploy
-    itself) — `other-app.yaml`, on the other hand, stays covered via
+    itself). `other-app.yaml`, on the other hand, stays covered via
     `include: '*.yaml'`. The uncovered root file is an unavoidable
     structural case of this pattern, not a bug: the `# argocd-lint:ignore`
     escape hatch exists precisely for this."""
@@ -365,7 +365,7 @@ spec:
 def test_kustomize_file_not_in_resources_is_flagged_as_orphan(git_repo):
     """The other side of the same coin: a manifest sitting in the overlay
     directory but never listed in `resources:` is a real orphan, exactly
-    like a plain directory source — Kustomize no longer masks this."""
+    like a plain directory source; Kustomize no longer masks this."""
     repo_root = git_repo(
         {
             ".argocd-lint.yaml": "scan_roots:\n  - manifests/\n",

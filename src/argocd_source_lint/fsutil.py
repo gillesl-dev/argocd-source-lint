@@ -15,15 +15,15 @@ _yaml = YAML(typ="rt")
 
 # A YAML anchor referenced twice by a later anchor, N layers deep,
 # expands to 2^N nodes if anything ever fully materializes it (e.g. a
-# naive `str()` on the parsed value) -- while staying a few hundred
+# naive `str()` on the parsed value), while staying a few hundred
 # bytes on disk ("billion laughs"). ruamel's loader itself is safe (an
-# alias resolves to the *same* object, not a copy -- confirmed
+# alias resolves to the *same* object, not a copy: confirmed
 # empirically, not assumed), so parsing never hangs; the risk is
 # entirely downstream, the moment something stringifies/walks the
 # result without knowing it may be densely aliased. Rejecting a
-# document whose *fully expanded* size would be unreasonable -- computed
+# document whose *fully expanded* size would be unreasonable, computed
 # via memoized recursion (`is_within_budget`), so this check itself
-# costs one pass over the *distinct* nodes, never the exploded count --
+# costs one pass over the *distinct* nodes, never the exploded count,
 # closes that off at the one place virtually everything here reads YAML
 # through, rather than defensively re-checking every later call site
 # that stringifies a value (see DESIGN.md "YAML alias bombs").
@@ -32,7 +32,7 @@ _MAX_EXPANDED_NODES = 1_000_000
 
 def is_within_budget(node: Any, memo: dict[int, int] | None = None) -> bool:
     """`False` if `node`, fully expanded, would exceed `_MAX_EXPANDED_NODES`
-    nodes -- generous headroom for any real manifest, far below what an
+    nodes: generous headroom for any real manifest, far below what an
     alias bomb reaches within a handful of anchor layers. `memo` (keyed by
     `id()`) makes this one pass over the distinct nodes: an aliased
     subtree's size is computed once and reused for every later reference
@@ -44,7 +44,7 @@ def is_within_budget(node: Any, memo: dict[int, int] | None = None) -> bool:
 
 _VISITING = -1  # sentinel: a genuine cycle isn't constructible through a
 # YAML anchor (an alias can only reference an anchor already fully
-# resolved -- confirmed empirically, a forward self-reference resolves
+# resolved: confirmed empirically, a forward self-reference resolves
 # to `None` instead), but this guards against one anyway rather than
 # trusting that to hold across every YAML feature and library version.
 
@@ -73,11 +73,11 @@ def _expanded_size(node: Any, memo: dict[int, int], budget: int) -> int | None:
 
 def walk_tree(directory: Path) -> Iterator[Path]:
     """Every file and directory under `directory`, breaking a directory
-    symlink/junction cycle instead of following it forever -- confirmed
+    symlink/junction cycle instead of following it forever: confirmed
     to hang otherwise (a junction pointing back at an ancestor, a few
     KB on disk); neither `Path.rglob` nor even `os.walk(followlinks=
     False)` protect against it, only a "real" symlink, and a Windows
-    junction isn't one (`Path.is_symlink()` is `False` for it too --
+    junction isn't one (`Path.is_symlink()` is `False` for it too;
     see DESIGN.md "A directory symlink/junction cycle"). `.git` is
     never descended into. Shared by `iter_yaml_files` and the
     ApplicationSet `git` generator's own directory/file discovery."""
@@ -137,7 +137,7 @@ def load_yaml_documents(path: Path) -> list[dict[str, Any]]:
     `covered_documents_for_application` re-parsed that Application's
     own source directory independently for every rule that reads it
     (five of them, plus two more via `covered_files_for_application`'s
-    own use of `covered_files_for_source`) -- confirmed for real, not
+    own use of `covered_files_for_source`); confirmed for real, not
     estimated: 40 Applications x 15 covered files each x 3 rules that
     actually reached this path in a minimal repro still cost ~4.9s of
     pure re-parsing. Caching here (rather than only in `coverage.py`'s
@@ -164,7 +164,7 @@ _DISCOVERED_DOCUMENTS_CACHE: dict[Path, list[tuple[Path, dict[str, Any]]]] = {}
 
 
 def discover_documents(repo_root: Path) -> list[tuple[Path, dict[str, Any]]]:
-    """Every YAML document in the repo, as `(manifest_path, doc)` pairs --
+    """Every YAML document in the repo, as `(manifest_path, doc)` pairs;
     shared by the three independent top-level discovery passes
     (`RawManifestDiscovery`, the ApplicationSet walker,
     `discover_app_projects`), each of which is only looking for one
@@ -173,7 +173,7 @@ def discover_documents(repo_root: Path) -> list[tuple[Path, dict[str, Any]]]:
     manifests (zero Applications/ApplicationSets/AppProjects among
     them) cost ~5s across the three independent passes before this
     cache existed. Cached by `repo_root` for the life of one CLI
-    invocation (`clear_caches`) -- same reasoning and same risk as
+    invocation (`clear_caches`); same reasoning and same risk as
     `git_context`'s revision cache: safe because nothing here writes to
     the repo mid-run, and a direct caller bypassing `cli.lint` (every
     test in this suite does) must call `clear_caches()` itself between
@@ -191,7 +191,7 @@ def discover_documents(repo_root: Path) -> list[tuple[Path, dict[str, Any]]]:
 
 
 def clear_caches() -> None:
-    """Resets `discover_documents`' and `load_yaml_documents`' caches --
+    """Resets `discover_documents`' and `load_yaml_documents`' caches:
     called once at the start of `cli.lint`, so each CLI invocation
     starts clean rather than either persisting for the life of the
     process."""

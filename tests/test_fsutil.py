@@ -49,14 +49,14 @@ def test_is_within_budget_false_for_an_alias_bomb():
 
 def test_is_within_budget_reuses_a_shared_subtree_across_siblings():
     """The whole point: an alias referenced twice must be *sized* once,
-    not twice -- otherwise this check would be exponential itself."""
+    not twice; otherwise this check would be exponential itself."""
     doc = YAML(typ="rt").load('a: &x ["1", "2", "3"]\nb: [*x, *x, *x, *x, *x]\n')
 
     assert is_within_budget(doc) is True
 
 
 def test_load_yaml_documents_silently_drops_an_alias_bomb(tmp_path: Path):
-    """Same fallback as a file that fails to parse outright -- never
+    """Same fallback as a file that fails to parse outright: never
     hangs, never raises."""
     path = tmp_path / "bomb.yaml"
     path.write_text(
@@ -85,9 +85,9 @@ def test_load_yaml_documents_still_parses_an_ordinary_multi_document_file(tmp_pa
 
 def test_walk_tree_breaks_a_self_referential_directory_cycle(tmp_path: Path):
     """A directory symlink/junction pointing back at an ancestor of
-    itself -- confirmed to hang `Path.rglob`, and even
-    `os.walk(followlinks=False)` (a Windows junction isn't reported as
-    a symlink, so that guard never triggers) -- must terminate here."""
+    itself must terminate here (confirmed to hang `Path.rglob`, and
+    even `os.walk(followlinks=False)`, since a Windows junction isn't
+    reported as a symlink, so that guard never triggers)."""
     (tmp_path / "app.yaml").write_text("kind: ConfigMap\n", encoding="utf-8")
     _symlink_or_skip(tmp_path, tmp_path / "loop")
 
@@ -103,7 +103,7 @@ def test_iter_yaml_files_breaks_a_self_referential_directory_cycle(tmp_path: Pat
     found = list(iter_yaml_files(tmp_path))
 
     # `loop` points at `tmp_path` itself, so descending into it is
-    # exactly the cycle being broken -- `app.yaml` is found once, via
+    # exactly the cycle being broken: `app.yaml` is found once, via
     # its real path, never via `loop` at all.
     assert found == [tmp_path / "app.yaml"]
 
@@ -111,7 +111,7 @@ def test_iter_yaml_files_breaks_a_self_referential_directory_cycle(tmp_path: Pat
 def test_discover_documents_is_cached_across_repeated_calls(tmp_path: Path, monkeypatch):
     """`RawManifestDiscovery`, the ApplicationSet walker and
     `discover_app_projects` each call this looking for a different
-    `kind` -- without caching, that's the whole repo walked and parsed
+    `kind`; without caching, that's the whole repo walked and parsed
     three times over. Confirmed to matter for real: 2,000 plain
     manifests (no Application/ApplicationSet/AppProject among them)
     cost ~5s across the three independent passes."""

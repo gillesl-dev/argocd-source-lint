@@ -105,7 +105,7 @@ def build_source(raw: dict[str, Any]) -> Source:
 
 
 def _line_of(node: Any) -> int | None:
-    """1-indexed line where a round-trip-parsed mapping/sequence starts —
+    """1-indexed line where a round-trip-parsed mapping/sequence starts;
     `None` for a plain dict/list (e.g. a `Source` built directly in a
     test, without going through YAML at all)."""
     lc = getattr(node, "lc", None)

@@ -38,7 +38,7 @@ class OrphanSourceRule(Rule):
             # A Helm values file referenced via `$ref/path.yaml` in
             # `helm.valueFiles` (a very common pattern: external chart +
             # values from this repo) is covered even when the source that
-            # references it has no `path` of its own — otherwise every
+            # references it has no `path` of its own; otherwise every
             # "chart + $values" Application produces a systematic false
             # positive.
             for rel_path in _referenced_value_file_paths(app, local_origin):

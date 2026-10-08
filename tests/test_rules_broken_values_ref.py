@@ -166,7 +166,7 @@ def test_rule_severity_is_configurable_via_policy(fixture_repo):
 
 def test_plain_entry_existing_file_produces_no_finding(git_repo):
     """A plain `valueFiles` entry (no `$ref/...`) is resolved relative to
-    its own source's `path` -- the common case, not a `$ref`-only rule."""
+    its own source's `path`: the common case, not a `$ref`-only rule."""
     repo_root = git_repo(
         {
             "bootstrap/argocd-apps/demo-app.yaml": """\
@@ -196,7 +196,7 @@ def test_plain_entry_missing_file_is_flagged(git_repo):
     """Real gap fixed here (see argoproj/argo-cd#4558, "New Applications
     with misconfiguration show up as Healthy"): a plain valueFiles entry
     pointing to a nonexistent file used to be silently ignored by this
-    rule -- it's the common case, not the exception."""
+    rule: it's the common case, not the exception."""
     repo_root = git_repo(
         {
             "bootstrap/argocd-apps/demo-app.yaml": """\

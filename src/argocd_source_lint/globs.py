@@ -10,13 +10,13 @@ def match_glob(pattern: str, candidate: str) -> bool:
     """ArgoCD's glob semantics, shared by the `git` ApplicationSet
     generator (`directories`/`files`) and `project-scope-violation`
     (`sourceRepos`/`destinations`): `*` matches within one `/`-separated
-    segment, `**` crosses `/` — unlike `fnmatch`, where a lone `*`
+    segment, `**` crosses `/`, unlike `fnmatch`, where a lone `*`
     already crosses `/`. `namespace`/`server`/`name` patterns never
     contain `/` in practice, so this is equally correct there.
 
     Matched with a dynamic-programming scan over `candidate`, not by
     translating to a backtracking regex (the previous implementation,
-    `re.match("^" + ".*".join(escaped) + "$", candidate)`) -- confirmed
+    `re.match("^" + ".*".join(escaped) + "$", candidate)`); confirmed
     for real, not theoretical: a pattern with ~25 `*`s and a ~40-character
     non-matching candidate (either one entirely repo-controlled: an
     ApplicationSet generator's own `path:`, or an `AppProject`'s

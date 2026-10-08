@@ -124,7 +124,7 @@ def _check_plain_entry(
     revision_resolvable: dict[str, bool],
 ) -> list[Finding]:
     """A plain (non-`$ref`) `helm.valueFiles` entry, resolved relative to
-    this source's own `path` -- the common case, and a real gap
+    this source's own `path` (the common case), and a real gap
     (confirmed by argoproj/argo-cd#4558, "New Applications with
     misconfiguration show up as Healthy"): a missing values file fails
     Helm template generation, but the Application can converge to a
@@ -180,7 +180,7 @@ def parse_ref_entry(entry: str) -> tuple[str | None, str]:
 
 
 def ref_sources_by_name(app: Application) -> dict[str, Source]:
-    """`app`'s own sources that declare `ref:`, indexed by that name --
+    """`app`'s own sources that declare `ref:`, indexed by that name:
     how a `$ref_name/...` entry resolves to the source it points at.
     Public for the same reason as `parse_ref_entry`."""
     return {source.ref: source for source in app.sources if source.ref}

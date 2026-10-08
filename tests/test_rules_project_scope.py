@@ -363,7 +363,7 @@ spec:
 
 def test_default_project_not_found_is_not_flagged(git_repo):
     """Absent a manifest for it, "default" is assumed to be ArgoCD's own
-    auto-created, permissive AppProject -- not something to flag."""
+    auto-created, permissive AppProject, not something to flag."""
     repo_root = git_repo(
         {
             "bootstrap/argocd-apps/app.yaml": """\

@@ -83,14 +83,14 @@ def test_revision_matches_checkout_none_for_unresolvable_revision(git_repo):
 def test_flag_like_revision_is_rejected_without_ever_calling_git(git_repo):
     """A `targetRevision` (or an ApplicationSet `git` generator's own
     `revision`) is repo-controlled YAML, not a value this tool ever
-    chose -- a value like `--remote=<url>` passed straight through to
+    chose: a value like `--remote=<url>` passed straight through to
     `git archive` is read as a *flag*, not a revision, and git actually
     reaches out to `<url>` instead of failing to parse. Confirmed for
     real (manually, not in this test to avoid a slow/flaky network
     call): `git archive "--remote=https://192.0.2.1/x"` spends the full
     TCP connect timeout instead of erroring instantly. Every function
     here must reject a `-`-prefixed revision *before* it ever reaches a
-    `git` subprocess -- asserted here by spying on `subprocess.run`."""
+    `git` subprocess (asserted here by spying on `subprocess.run`)."""
     repo_root = git_repo({"a.txt": "x"})
     clear_caches()
     malicious = "--remote=https://192.0.2.1/x"
@@ -108,7 +108,7 @@ def test_resolve_commit_is_cached_across_repeated_calls(git_repo):
     """50 Applications sharing `targetRevision: HEAD`, each checked by
     several local-source rules, cost 702 identical `git rev-parse`
     calls before this cache existed (~58s on Windows, where subprocess
-    spawn itself dominates) -- confirmed for real, not estimated."""
+    spawn itself dominates), confirmed for real, not estimated."""
     repo_root = git_repo({"a.txt": "x"})
     clear_caches()
 
@@ -132,7 +132,7 @@ def test_path_has_tracked_files_false_for_a_missing_path(git_repo):
 
 def test_path_has_tracked_files_does_not_confuse_a_prefix_collision(git_repo):
     """`apps/app-1` and `apps/app-10` share a textual prefix but are
-    different directories -- a naive `str.startswith(pathspec)` (missing
+    different directories: a naive `str.startswith(pathspec)` (missing
     the trailing `/`) would wrongly treat the second as covering the
     first."""
     repo_root = git_repo({"apps/app-10/deployment.yaml": "x"})
@@ -146,7 +146,7 @@ def test_path_has_tracked_files_true_for_an_exact_file_path(git_repo):
 
 def test_tree_paths_at_revision_is_cached_across_repeated_calls(git_repo):
     """`phantom-target` used to run one `git ls-tree` per Application even
-    though most share `targetRevision: HEAD` -- confirmed for real: 40
+    though most share `targetRevision: HEAD`; confirmed for real: 40
     Applications cost ~2.3s of it before this cache existed."""
     repo_root = git_repo({"apps/app-1/deployment.yaml": "x"})
     clear_caches()
@@ -179,7 +179,7 @@ def test_clear_caches_picks_up_a_new_commit(git_repo, git_tag, git_commit):
     """The one scenario the cache must never get wrong: a repo mutated
     between two `argocd-source-lint` invocations that happen to share
     a process (only possible in a test harness calling the CLI twice
-    in-process -- a real run is always a fresh OS process)."""
+    in-process; a real run is always a fresh OS process)."""
     repo_root = git_repo({"a.txt": "x"})
     git_tag(repo_root, "v1.0")
     clear_caches()

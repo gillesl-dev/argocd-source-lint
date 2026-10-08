@@ -13,7 +13,7 @@ class MalformedIgnoreDiffPointerRule(Rule):
     """`ignoreDifferences[].jsonPointers` entries follow RFC 6901: each
     one must start with `/` (`/spec/replicas`, never `spec.replicas` or
     `spec/replicas`). A pointer that doesn't resolves to nothing, so the
-    rule silently ignores nothing -- a well-documented, common authoring
+    rule silently ignores nothing: a well-documented, common authoring
     mistake (dot notation copied from a different tool's path syntax),
     not a heuristic judgment call: this is an objective syntax check, no
     live cluster needed."""

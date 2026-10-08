@@ -48,7 +48,7 @@ def write_baseline(
     repo_root: Path, findings: list[Finding], filename: str = DEFAULT_BASELINE_FILENAME
 ) -> Path:
     """Writes every current finding to the baseline file, accepting them
-    all at once — the onboarding path for an existing repo. Overwrites any
+    all at once: this is the onboarding path for an existing repo. Overwrites any
     previous baseline outright (it is meant to be regenerated, not
     hand-merged)."""
     entries = [
@@ -73,7 +73,7 @@ def write_baseline(
 def split_by_baseline(
     findings: list[Finding], baseline: set[FindingKey]
 ) -> tuple[list[Finding], list[Finding]]:
-    """Splits `findings` into (new, known) — `known` are already accepted
+    """Splits `findings` into (new, known): `known` are already accepted
     in the baseline and should be suppressed from the report and the exit
     code, `new` are everything else."""
     new: list[Finding] = []
@@ -84,7 +84,7 @@ def split_by_baseline(
 
 
 def stale_baseline_entries(findings: list[Finding], baseline: set[FindingKey]) -> set[FindingKey]:
-    """Baseline entries matching none of the current `findings` — the
+    """Baseline entries matching none of the current `findings`: the
     underlying issue was fixed, renamed, or the file/Application removed,
     so the entry no longer suppresses anything. Purely informational
     (never affects the exit code): a stale entry is dead weight, not a

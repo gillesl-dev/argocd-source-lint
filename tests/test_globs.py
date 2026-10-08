@@ -33,7 +33,7 @@ def test_multiple_stars_in_one_pattern():
 
 
 def test_regex_metacharacters_in_pattern_are_treated_as_literal():
-    """The pattern is matched directly, never translated into a regex --
+    """The pattern is matched directly, never translated into a regex:
     a literal `.`/`+`/`(` in a real path (e.g. `clusters/dev.json`) must
     never be interpreted as a regex metacharacter."""
     assert match_glob("clusters/*.json", "clusters/dev.json") is True
@@ -53,7 +53,7 @@ def test_pattern_with_trailing_wildcard_after_full_match():
 def test_a_pattern_that_previously_caused_catastrophic_backtracking_is_fast():
     """Confirmed for real before the fix: `re.match("^" + ".*".join(...)
     + "$", candidate)` on a pattern shaped like `*a*a*a...*a!` against a
-    non-matching candidate of `a`s hung indefinitely -- a classic ReDoS
+    non-matching candidate of `a`s hung indefinitely: a classic ReDoS
     (repeated wildcard/literal pairs, ambiguous about which wildcard
     consumed which character, on a string that ultimately can't match).
     Both the pattern and the candidate are repo-controlled (an
@@ -68,5 +68,5 @@ def test_a_pattern_that_previously_caused_catastrophic_backtracking_is_fast():
     result = match_glob(pattern, candidate)
     elapsed = time.perf_counter() - start
 
-    assert result is False  # candidate has no "!" -- genuinely no match
+    assert result is False  # candidate has no "!"; genuinely no match
     assert elapsed < 1.0

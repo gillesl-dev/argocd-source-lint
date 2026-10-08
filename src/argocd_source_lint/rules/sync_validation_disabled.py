@@ -13,7 +13,7 @@ _VALIDATE_FALSE = "Validate=false"
 
 class SyncValidationDisabledRule(Rule):
     """`Validate=false` skips the API server's schema validation on
-    sync -- legitimate for a CRD with a known-broken OpenAPI schema, but
+    sync (legitimate for a CRD with a known-broken OpenAPI schema), but
     also a common way to silence a validation error on a manifest that's
     actually wrong, and one that's easy to add once and forget. Purely
     static: the flag is right there in the Application manifest, no

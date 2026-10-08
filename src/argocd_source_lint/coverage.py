@@ -24,7 +24,7 @@ _OPAQUE_TOOL_MARKERS = ("Chart.yaml",)
 _KUSTOMIZATION_FILENAMES = ("kustomization.yaml", "kustomization.yml", "Kustomization")
 
 # Keys under which `kustomization.yaml` lists a bare relative path (file or
-# directory) — resolved and marked covered, recursing into a directory
+# directory); resolved and marked covered, recursing into a directory
 # that is itself a Kustomize overlay. A remote reference (git URL, SCM
 # shorthand) simply won't resolve to anything on disk and is silently
 # skipped: verifying it is out of scope, same principle as an external
@@ -40,11 +40,11 @@ def covered_files_for_source(
 ) -> Iterator[Path]:
     """Files actually covered by a `path` source, aligned with real ArgoCD
     behavior (`directory.recurse`/`include`/`exclude`, see DESIGN.md).
-    Never called directly by a rule -- only through
+    Never called directly by a rule; only through
     `covered_files_for_application` (`orphan-source`, `double-coverage`)
     or `covered_documents_for_application` (`missing-ignore-diff`,
     `hpa-selfheal-conflict`, `unknown-sync-option`, `unknown-resource-hook`,
-    `malformed-sync-wave`) below, seven rules in total -- each of those
+    `malformed-sync-wave`) below, seven rules in total; each of those
     independently walks the same source directory, so the result is
     cached by the only inputs it actually depends on (`source_dir`, plus
     the three `directory.*` fields that can change what's yielded from
@@ -57,7 +57,7 @@ def covered_files_for_source(
 
     `base_root` bounds a Kustomize overlay's own `resources`/`bases`/...
     references (see DESIGN.md "A Kustomize overlay can read outside the
-    repo") -- defaults to `source_dir` itself when not given (the
+    repo"); defaults to `source_dir` itself when not given (the
     direct-call/test case), so a reference can never escape further
     than wherever the walk started."""
     base_root = source_dir.resolve() if base_root is None else base_root
@@ -99,12 +99,12 @@ def covered_files_for_application(
     app: Application, repo_root: Path, local_origin: str | None
 ) -> set[Path]:
     """Repo-relative identity of every file covered by any of `app`'s
-    local `path` sources — the *identity* used for dedup/reporting by
+    local `path` sources: the *identity* used for dedup/reporting by
     `orphan-source` and `double-coverage`, deliberately not tied to
     whether the file was actually found on disk at `repo_root` or in a
     snapshot of a divergent `targetRevision` (see `_resolved_source_root`
     and DESIGN.md "targetRevision drift"). Neither caller ever needs to
-    open the file itself — `missing-ignore-diff` does, so it reads
+    open the file itself; `missing-ignore-diff` does, so it reads
     `covered_documents_for_application` instead."""
     covered: set[Path] = set()
     for source in local_path_sources(app, local_origin):
@@ -121,7 +121,7 @@ def covered_documents_for_application(
     app: Application, repo_root: Path, local_origin: str | None
 ) -> Iterator[dict[str, Any]]:
     """Every YAML document actually covered by any of `app`'s local `path`
-    sources, parsed — used exclusively by `missing-ignore-diff`, the only
+    sources, parsed; used exclusively by `missing-ignore-diff`, the only
     rule that needs real file content rather than just path identity: a
     source pinned to a divergent `targetRevision` is read from its
     materialized snapshot directly, never from the (possibly nonexistent)
@@ -139,7 +139,7 @@ def _resolved_source_root(repo_root: Path, source: Source) -> tuple[Path, Path] 
     """`(base_root, source_dir)` for `source`: `base_root` is `repo_root`,
     or a materialized snapshot of `source.target_revision` when that
     differs from what's checked out. `None` if the resulting directory
-    doesn't exist there -- or if `source.path` (repo-controlled YAML,
+    doesn't exist there, or if `source.path` (repo-controlled YAML,
     e.g. `path: ../../../etc`) would resolve *outside* `base_root`
     entirely: confirmed for real, not theoretical, this tool would
     otherwise walk and read arbitrary files anywhere on the host
@@ -179,11 +179,11 @@ def covered_files_for_kustomize_dir(
     `components`/`crds` entry (recursing into a directory reference),
     every `patches`/`patchesStrategicMerge`/`patchesJson6902` file, and
     every `configMapGenerator`/`secretGenerator` `files`/`envs`/`envFile`
-    entry. Anything in the directory but never referenced stays uncovered
-    — the same `orphan-source` signal as a plain directory source, one
+    entry. Anything in the directory but never referenced stays uncovered,
+    the same `orphan-source` signal as a plain directory source, one
     level deeper.
 
-    `base_root` bounds every reference resolved below -- defaults to
+    `base_root` bounds every reference resolved below; defaults to
     `directory` itself when not given (the direct-call/test case).
     Unlike an Application's own `path`, these come from *tracked YAML
     content*, not ArgoCD's own schema: a `resources: [../../../etc]`
@@ -264,7 +264,7 @@ def _resolve_local_reference(
 
 
 def clear_caches() -> None:
-    """Resets `covered_files_for_source`'s cache -- called once at the
+    """Resets `covered_files_for_source`'s cache: called once at the
     start of `cli.lint`, same reasoning as `fsutil.clear_caches` and
     `git_context.clear_caches`."""
     _COVERED_FILES_CACHE.clear()

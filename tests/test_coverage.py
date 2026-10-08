@@ -148,7 +148,7 @@ def test_resources_cycle_does_not_infinite_loop(tmp_path):
 
 def test_kustomize_resources_entry_that_escapes_base_root_is_not_resolved(tmp_path):
     """A `resources:`/`bases:`/... entry comes from *tracked YAML
-    content*, not ArgoCD's own schema -- confirmed for real: without
+    content*, not ArgoCD's own schema; confirmed for real: without
     `base_root`, `../../../etc/passwd`-style entries were resolved and
     read exactly like a real reference, walking and leaking file
     content from anywhere on the host filesystem reachable from the
@@ -167,8 +167,8 @@ def test_kustomize_resources_entry_that_escapes_base_root_is_not_resolved(tmp_pa
 
 def test_kustomize_resources_entry_within_base_root_still_resolves(tmp_path):
     """Regression guard for the fix above: a legitimate `../` reference
-    that stays inside the repo -- a common Kustomize pattern, an overlay
-    referencing a shared base a few levels up -- must still resolve."""
+    that stays inside the repo (a common Kustomize pattern, an overlay
+    referencing a shared base a few levels up) must still resolve."""
     base = _write(tmp_path, "shared/base.yaml")
     _write(tmp_path, "overlays/prod/kustomization.yaml", "resources:\n  - ../../shared/base.yaml\n")
 
@@ -185,7 +185,7 @@ def test_non_kustomize_directory_returns_empty_set(tmp_path):
 
 def test_match_directory_patterns_is_case_sensitive():
     """ArgoCD's `directory.include`/`exclude` is matched by Go's
-    `filepath.Match`, which never folds case on any platform — this must
+    `filepath.Match`, which never folds case on any platform. This must
     stay true regardless of the host OS running the linter, not silently
     over-match on Windows via `fnmatch`'s case-folding."""
     assert match_directory_patterns("deploy.yaml", "*.yaml") is True
@@ -198,7 +198,7 @@ def test_match_directory_patterns_brace_alternatives_still_match():
 
 def test_a_source_path_that_escapes_the_repo_covers_and_reads_nothing(tmp_path):
     """A source's own `path` is repo-controlled YAML too, same as a
-    Kustomize `resources:` entry -- confirmed for real: `path:
+    Kustomize `resources:` entry; confirmed for real: `path:
     ../outside-secret` used to walk and read a sibling directory's
     content entirely outside the repo, crashing
     `covered_files_for_application` (`Path.relative_to` on a path

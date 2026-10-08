@@ -15,7 +15,7 @@ _SCP_LIKE_RE = re.compile(r"^(?:[^@/]+@)?([^:/]+):(.+)$")
 
 
 def _is_safe_revision(revision: str) -> bool:
-    """A real git revision (branch, tag, SHA) never starts with `-` --
+    """A real git revision (branch, tag, SHA) never starts with `-`:
     `git check-ref-format` itself disallows a ref starting with `-`, and
     a hex SHA can't either. But `revision` here always comes from
     repo-controlled YAML (a source's `targetRevision`, or an
@@ -26,7 +26,7 @@ def _is_safe_revision(revision: str) -> bool:
     parse error: `git archive "--remote=https://<host>/x"` (exactly
     `materialize_revision`'s own command below) spends the full connect
     timeout actually reaching out to `<host>` instead of failing
-    instantly -- a live SSRF primitive from inside whatever CI job runs
+    instantly: a live SSRF primitive from inside whatever CI job runs
     this tool, breaking the "no network access" guarantee the whole
     tool is built on (see DESIGN.md "Mono-repo v1 scope"). Every
     function in this module that shells out with a `revision` argument
@@ -38,11 +38,11 @@ def _is_safe_revision(revision: str) -> bool:
 def is_git_available() -> bool:
     """Every rule that resolves a source ultimately shells out to `git`
     (revision lookups, tree listings, the `targetRevision`-drift
-    snapshot) -- but `get_origin_url` is the only one of those call
+    snapshot); but `get_origin_url` is the only one of those call
     sites that catches a missing binary, and it does so by returning
     `None`, the exact same value it returns for a repo with no `origin`
     remote configured at all. Every rule already treats that `None` as
-    "nothing here is local" -- correct for a missing remote, silently
+    "nothing here is local", correct for a missing remote, silently
     wrong for a missing `git`: every source floods `orphan-source`/
     `double-coverage` as a false "not covered" instead of a clear error
     (confirmed against `python:3.11-slim`, the base image this repo's
@@ -108,7 +108,7 @@ def local_path_sources(app: Application, local_origin: str | None) -> list[Sourc
 
 def external_path_sources(app: Application, local_origin: str | None) -> list[Source]:
     """Sources with a `path` that points to a Git repo different from the
-    local repo (see DESIGN.md "Mono-repo v1 scope") — the "out of scope
+    local repo (see DESIGN.md "Mono-repo v1 scope"): the "out of scope
     v1" counterpart to `local_path_sources`. An Application can have
     sources in both lists at once (mixed external chart + local manifests
     pattern): each rule must report these sources as `info` individually,
@@ -123,7 +123,7 @@ def external_path_sources(app: Application, local_origin: str | None) -> list[So
 def is_revision_resolvable(repo_root: Path, revision: str) -> bool:
     """Shallow-clone safeguard (see DESIGN.md "The unverifiable severity"):
     a revision not fetched locally must never be treated as "path
-    missing" — only as unverifiable. Used by `phantom-target` and
+    missing"; only as unverifiable. Used by `phantom-target` and
     `broken-values-ref`."""
     if not _is_safe_revision(revision):
         return False
@@ -140,7 +140,7 @@ _RESOLVED_COMMIT_CACHE: dict[tuple[Path, str], str | None] = {}
 
 def _resolve_commit(repo_root: Path, revision: str) -> str | None:
     # `revision_matches_checkout` (via `coverage._resolved_source_root`)
-    # runs once per local source, per rule -- with N local-source rules
+    # runs once per local source, per rule, with N local-source rules
     # and M sources sharing the same `targetRevision` (`HEAD`, usually),
     # that's N*M identical `git rev-parse` calls for the exact same
     # answer. Confirmed to matter for real: 50 Applications, all
@@ -170,7 +170,7 @@ def _resolve_commit(repo_root: Path, revision: str) -> str | None:
 
 def clear_caches() -> None:
     """Resets every module-level cache here (`_resolve_commit`,
-    `materialize_revision`, `tree_paths_at_revision`) -- called once at
+    `materialize_revision`, `tree_paths_at_revision`); called once at
     the start of `cli.lint`, so each CLI invocation starts clean rather
     than these persisting for the life of the process (see
     `_resolve_commit`)."""
@@ -181,7 +181,7 @@ def clear_caches() -> None:
 
 def revision_matches_checkout(repo_root: Path, revision: str) -> bool | None:
     """Whether `revision` resolves to the same commit as the current
-    checkout (`HEAD`) — used by `revision-mismatch` (see DESIGN.md
+    checkout (`HEAD`); used by `revision-mismatch` (see DESIGN.md
     "orphan-source, missing-ignore-diff and double-coverage read the
     working tree, not `targetRevision`"). `None` when `revision` isn't
     resolvable at all: that's already `phantom-target`'s/
@@ -201,12 +201,12 @@ def materialize_revision(repo_root: Path, revision: str) -> Path | None:
     """A full extraction of `repo_root` as it existed at `revision` into a
     throwaway directory, so filesystem-based logic elsewhere (coverage
     computation, the ApplicationSet `git` generator's own `directories`/
-    `files` discovery) can be reused completely unchanged against it —
+    `files` discovery) can be reused completely unchanged against it,
     including cross-directory Kustomize references, which a partial
     extraction of just one source's own `path` would silently fail to
     resolve. Reused across every caller pinned to the same revision
     within this run; cleaned up at process exit. `None` if `revision`
-    doesn't produce a tree (shouldn't happen — callers only reach this
+    doesn't produce a tree (shouldn't happen: callers only reach this
     after `revision_matches_checkout` confirmed it resolves, or
     `is_revision_resolvable` directly), or if the archive itself can't
     be safely extracted (see `filter="data"` below)."""
@@ -233,7 +233,7 @@ def materialize_revision(repo_root: Path, revision: str) -> Path | None:
             with tarfile.open(fileobj=BytesIO(result.stdout)) as tar:
                 # `filter="data"` (tar-slip hardening, PEP 706) rejects a
                 # `../`-style entry or an absolute path instead of writing
-                # outside `tmp_root` -- confirmed for real, not assumed:
+                # outside `tmp_root`; confirmed for real, not assumed:
                 # a crafted entry raises `OutsideDestinationError` rather
                 # than extracting. That's still an unhandled exception
                 # without this `try`, so a tar stream this tool doesn't
@@ -251,7 +251,7 @@ def materialize_revision(repo_root: Path, revision: str) -> Path | None:
 
 def list_tree_paths(repo_root: Path, revision: str, pathspec: str) -> list[str]:
     """File paths under `pathspec` at `revision`. Assumes `revision` is
-    already known to be resolvable (`is_revision_resolvable`) — otherwise
+    already known to be resolvable (`is_revision_resolvable`); otherwise
     returns an empty list instead of failing loudly."""
     if not _is_safe_revision(revision):
         return []
@@ -271,7 +271,7 @@ _FULL_TREE_CACHE: dict[tuple[Path, str], frozenset[str]] = {}
 
 def tree_paths_at_revision(repo_root: Path, revision: str) -> frozenset[str]:
     """Every file path at `revision`, one `git ls-tree` of the whole tree
-    per `(repo_root, revision)` -- cached the same way and for the same
+    per `(repo_root, revision)`, cached the same way and for the same
     reason as `_resolve_commit`. Callers that used to ask `list_tree_paths`
     the same revision-scoped question once per distinct path (`phantom-
     target`: one `git ls-tree` per Application, even though most share
@@ -285,13 +285,13 @@ def tree_paths_at_revision(repo_root: Path, revision: str) -> frozenset[str]:
 
 def path_has_tracked_files(repo_root: Path, revision: str, pathspec: str) -> bool:
     """Whether `pathspec` (a file, or a directory containing at least one
-    tracked file) exists at `revision` -- the same question
+    tracked file) exists at `revision`: the same question
     `list_tree_paths(repo_root, revision, pathspec)` answers via its own
     `git ls-tree` call, backed instead by `tree_paths_at_revision`'s
     single whole-tree call. A literal path match/prefix check, same as
     git's own pathspec matching for a plain (non-glob) path; a
-    `pathspec` containing glob metacharacters (`*`, `?`, `[`) -- not a
-    real ArgoCD `source.path` value -- would not match here the way
+    `pathspec` containing glob metacharacters (`*`, `?`, `[`), not a
+    real ArgoCD `source.path` value, would not match here the way
     `git ls-tree` itself would expand it."""
     pathspec = pathspec.strip("/") or "."
     paths = tree_paths_at_revision(repo_root, revision)

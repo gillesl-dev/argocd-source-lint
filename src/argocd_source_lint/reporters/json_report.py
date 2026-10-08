@@ -11,7 +11,7 @@ def render_findings(findings: list[Finding]) -> str:
 
 
 def _finding_dict(finding: Finding) -> dict:
-    # `model_dump` would serialize `file` via `str(Path)` — backslashes on
+    # `model_dump` would serialize `file` via `str(Path)`: backslashes on
     # Windows, invalid for cross-platform JSON consumers.
     data = finding.model_dump(mode="json")
     data["file"] = finding.file.as_posix()

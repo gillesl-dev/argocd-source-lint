@@ -62,7 +62,7 @@ def test_sarif_structure_and_severity_mapping():
     assert payload["$schema"] == "https://json.schemastore.org/sarif-2.1.0.json"
     assert payload["version"] == "2.1.0"
     run = payload["runs"][0]
-    # Every known rule, not just the two with results here -- covered
+    # Every known rule, not just the two with results here: covered
     # more precisely (against DEFAULT_RULE_SEVERITIES) by
     # test_sarif_rules_metadata_covers_every_configurable_rule below;
     # this just confirms render_findings doesn't filter driver.rules
@@ -162,12 +162,12 @@ def test_table_prints_no_issues_message_when_findings_empty():
 
 def test_table_escapes_rich_markup_in_repo_controlled_fields():
     """`Table.add_row` parses every string argument as rich markup by
-    default -- confirmed for real: an Application name containing
+    default; confirmed for real: an Application name containing
     `[link=...]` rendered as an actual clickable hyperlink, and a
     `[bold red on white]`-style tag actually re-styled the output,
     before this was fixed. `application`/`message`/`file` (via
     `metadata.name`, a rule's message text, a filename) are all
-    repo-controlled -- a crafted repo must never be able to spoof or
+    repo-controlled: a crafted repo must never be able to spoof or
     restyle this tool's own terminal output."""
     finding = Finding(
         rule_id="orphan-source",
@@ -230,7 +230,7 @@ def test_junit_is_valid_empty_suite_when_no_findings():
 
 def test_junit_disambiguates_duplicate_testcase_names():
     """GitLab's own JUnit parser silently drops every testcase after the
-    first sharing the same name -- two different findings (different
+    first sharing the same name: two different findings (different
     file/Application) can share the exact same message."""
     first = Finding(
         rule_id="unknown-resource-hook",

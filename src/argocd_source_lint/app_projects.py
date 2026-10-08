@@ -8,11 +8,11 @@ from argocd_source_lint.models import AppProject, AppProjectDestination
 
 
 def discover_app_projects(repo_root: Path) -> list[AppProject]:
-    """Walks the repo for `kind: AppProject` manifests — used only by
+    """Walks the repo for `kind: AppProject` manifests, used only by
     `project-scope-violation`. A project referenced by an Application but
     not found here is either genuinely undeclared (ArgoCD's own
     permissive auto-created "default") or managed out-of-band in another
-    repo — the rule itself decides which, this just reports what's here."""
+    repo: the rule itself decides which, this just reports what's here."""
     projects: list[AppProject] = []
     for manifest_path, doc in discover_documents(repo_root):
         if _is_app_project(doc):

@@ -1,5 +1,5 @@
 # Community signature pack for the missing-ignore-diff rule. Adding an
-# operator here is a plain YAML PR, never a code change — the rule engine
+# operator here is a plain YAML PR, never a code change: the rule engine
 # (rules/missing_ignore_diff.py) is entirely generic.
 #
 # - crd_trigger : "<group>/<Kind>" of the CRD that triggers the check.
@@ -7,7 +7,7 @@
 #                 instance (e.g. metadata.name).
 # - name_from_each : optional dotted path to a mapping on the same CRD
 #                 instance (e.g. a Zalando postgresql resource's
-#                 spec.users) -- when set, expect_ignore_on is evaluated
+#                 spec.users): when set, expect_ignore_on is evaluated
 #                 once per key of that mapping, with {user} bound to the
 #                 key on top of {name}. Omit it for the common case of a
 #                 single derived name per instance.
@@ -45,7 +45,7 @@
       name_pattern: "{name}-default-user"
 
 # Only generates a Secret for spec.authentication.type "scram-sha-512"
-# or "tls" -- an ACL-only or "tls-external" KafkaUser never gets one, so
+# or "tls": an ACL-only or "tls-external" KafkaUser never gets one, so
 # this can false-positive on those. missing-ignore-diff is warning-only
 # and heuristic by nature (see rules/missing_ignore_diff.py) precisely
 # because a signature can't express that kind of conditional trigger.
@@ -67,7 +67,7 @@
       name_pattern: "{user}.{name}.credentials.postgresql.acid.zalan.do"
 
 # Only the default spec.bootstrapAdmin behavior (no explicit secret
-# override) produces this derived name -- confirmed against the
+# override) produces this derived name, confirmed against the
 # official Keycloak Operator docs. Same conditional-trigger limitation
 # as the KafkaUser entry above: a custom bootstrapAdmin secret isn't
 # covered.
@@ -78,7 +78,7 @@
       name_pattern: "{name}-initial-admin"
 
 # spec.target.name defaults to the ExternalSecret's own metadata.name
-# when omitted (confirmed against the official API reference) -- an
+# when omitted (confirmed against the official API reference); an
 # explicit override isn't covered, a false negative rather than a
 # guess. Documented as a real ArgoCD/ESO footgun by Akuity's own
 # support KB, not assumed.

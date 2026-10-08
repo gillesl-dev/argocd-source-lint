@@ -14,7 +14,7 @@ RULE_ID = "double-coverage"
 class DoubleCoverageRule(Rule):
     """The mirror image of `orphan-source`: a file covered by more than
     one *different* Application's local sources at once, which ArgoCD
-    would try to sync from two independent loops — the same manifest can
+    would try to sync from two independent loops; the same manifest can
     flap between whatever each Application last applied. A file covered
     twice by two sources of the *same* Application isn't flagged: that's
     one sync loop, not a conflict."""

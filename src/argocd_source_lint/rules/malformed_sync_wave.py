@@ -15,7 +15,7 @@ RULE_ID = "malformed-sync-wave"
 _SYNC_WAVE_ANNOTATION = "argocd.argoproj.io/sync-wave"
 
 # ArgoCD's GetSyncWave parses this annotation with Go's strconv.Atoi
-# (confirmed against the argo-cd source, not assumed) -- a signed
+# (confirmed against the argo-cd source, not assumed): a signed
 # integer literal, no whitespace, no decimal point. A value that
 # doesn't match falls through the same unvalidated-annotation
 # architecture as sync-options/hooks: the parse error isn't surfaced,
@@ -26,7 +26,7 @@ _INTEGER_LITERAL = re.compile(r"[+-]?[0-9]+")
 class MalformedSyncWaveRule(Rule):
     """A copy-paste mistake (e.g. `PreSync` pasted into `sync-wave`
     instead of `hook`) or a stray non-numeric value silently collapses
-    that resource back to wave 0 instead of erroring -- the same
+    that resource back to wave 0 instead of erroring, the same
     unvalidated-annotation-string architecture already confirmed for
     `unknown-sync-option`/`unknown-resource-hook`, this time on the
     numeric side rather than a closed set of keywords."""

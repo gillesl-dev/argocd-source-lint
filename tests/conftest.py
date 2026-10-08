@@ -30,7 +30,7 @@ def _init_git_repo(repo_root: Path, origin_url: str) -> None:
 @pytest.fixture
 def git_repo(tmp_path: Path) -> Callable[..., Path]:
     """Builds a real mini Git repo in tmp_path from a {relative path:
-    content} mapping, with an `origin` remote (no filesystem mocks — a
+    content} mapping, with an `origin` remote (no filesystem mocks: a
     real `git init` as a fixture)."""
 
     def _make(files: dict[str, str], origin_url: str = DEFAULT_ORIGIN_URL) -> Path:
@@ -58,7 +58,7 @@ def git_tag() -> Callable[[Path, str], None]:
 @pytest.fixture
 def git_commit() -> Callable[..., None]:
     """Writes/deletes files (`None` value = delete) in an existing
-    `git_repo`/`fixture_repo` repo and commits the result — for building a
+    `git_repo`/`fixture_repo` repo and commits the result, for building a
     second revision that diverges from one already tagged."""
 
     def _make(

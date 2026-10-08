@@ -171,7 +171,7 @@ spec:
 
 def test_applicationset_generator_colliding_with_itself_is_flagged(git_repo):
     """Two generator entries rendering to the same name via the template
-    -- e.g. a typo'd `elements` list -- share the same source_file (the
+    (e.g. a typo'd `elements` list) share the same source_file (the
     ApplicationSet's own manifest), listed only once (see
     `_finding`'s de-duplication)."""
     repo_root = git_repo(

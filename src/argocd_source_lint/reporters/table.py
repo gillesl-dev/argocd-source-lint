@@ -32,13 +32,13 @@ def render_findings(console: Console, findings: list[Finding]) -> None:
         if finding.line is not None:
             location += f":{finding.line}"
         # `rich.table.Table.add_row` parses every string argument as
-        # rich markup by default -- confirmed for real, not assumed: an
+        # rich markup by default; confirmed for real, not assumed: an
         # Application name or a finding message containing `[link=...]`
         # rendered as an actual clickable hyperlink, and `[bold red on
         # white]`-style tags actually re-styled the output. Every field
         # below can contain repo-controlled content (an Application's
         # own `metadata.name`, a filename, a rule's own message text
-        # quoting something from the manifest) -- `escape()` so a
+        # quoting something from the manifest); `escape()` so a
         # crafted repo can't spoof or restyle this tool's own terminal
         # output. `finding.severity.value`/`style` are never repo
         # content (a closed enum/style map this tool controls), so

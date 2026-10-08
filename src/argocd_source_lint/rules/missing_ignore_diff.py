@@ -31,7 +31,7 @@ class MissingIgnoreDiffRule(Rule):
 
         for app in applications:
             # Heuristic rule by nature: only Applications with
-            # selfHeal active are concerned — without it, ArgoCD never
+            # selfHeal active are concerned. Without it, ArgoCD never
             # overwrites out-of-Git-managed fields anyway, so the rule has
             # nothing to say about ANY of its sources (including external
             # ones: no point flagging them "out of scope" for a risk that
@@ -77,11 +77,11 @@ def _check_document(
 def _resolve_contexts(
     doc: dict[str, Any], signature: KnownOperatorSignature, resolved_name: str
 ) -> list[dict[str, str]]:
-    """One `str.format()` kwargs dict per resource to check -- a single
+    """One `str.format()` kwargs dict per resource to check: a single
     `{"name": resolved_name}` for a plain signature, or one per key of
     the `name_from_each` mapping (e.g. a Zalando `postgresql` resource's
     `spec.users`, each becoming `{user}` alongside `{name}`) when set.
-    An empty/missing mapping yields no contexts at all -- never guessed
+    An empty/missing mapping yields no contexts at all, never guessed
     at, same principle as everywhere else in this rule."""
     if signature.name_from_each is None:
         return [{"name": resolved_name}]
@@ -155,8 +155,8 @@ def _has_matching_ignore_diff(
     app: Application, kind: str, name: str, namespace: str | None
 ) -> bool:
     """The known derived resources (`known-operators.yaml`) are all core
-    kinds (empty `group`) — an `ignoreDifferences` rule explicitly targeting
-    another group can therefore never cover them. A rule with no
+    kinds (empty `group`), so an `ignoreDifferences` rule explicitly targeting
+    another group can never cover them. A rule with no
     `namespace` covers every namespace (just like a missing `name` covers
     every instance); a rule with a `namespace` set must match the
     triggering resource's namespace."""

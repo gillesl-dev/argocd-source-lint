@@ -6,7 +6,7 @@ from argocd_source_lint.models import Finding, Severity
 
 # JUnit has no native "warning"/"info" level, only pass/failure/error/
 # skipped. error and unverifiable are the two severities that actually
-# block CI by default (see cli._exit_code) -- mapped to <failure>.
+# block CI by default (see cli._exit_code); mapped to <failure>.
 # warning/info become <skipped> rather than a plain, silent pass: they
 # ARE something to look at, just not blocking, and a skipped testcase
 # renders visually distinct (grey, not green) in every consumer that
@@ -39,7 +39,7 @@ def render_findings(findings: list[Finding]) -> str:
 
 def _testcase(finding: Finding, seen: dict[tuple[str, str], int]) -> ET.Element:
     # GitLab's own JUnit parser silently drops every testcase after the
-    # first one sharing the same name -- and `name` here is the finding's
+    # first one sharing the same name, and `name` here is the finding's
     # message, which two *different* findings (different file/Application)
     # can share verbatim (e.g. the same copy-pasted typo in two repos'
     # worth of manifests). A suffix on the repeat keeps every finding

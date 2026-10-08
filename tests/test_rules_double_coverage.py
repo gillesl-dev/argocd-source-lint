@@ -65,7 +65,7 @@ spec:
 
 
 def test_same_application_covering_a_file_twice_is_not_flagged(git_repo):
-    """Two sources of the SAME Application overlapping isn't a conflict —
+    """Two sources of the SAME Application overlapping isn't a conflict:
     it's one sync loop, not two fighting each other."""
     repo_root = git_repo(
         {

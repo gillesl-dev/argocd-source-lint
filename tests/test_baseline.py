@@ -74,7 +74,7 @@ def test_stale_baseline_entries_reports_a_fixed_finding(tmp_path):
     write_baseline(tmp_path, [_ACCEPTED, _NEW])
     baseline = load_baseline(tmp_path)
 
-    # _NEW is no longer produced by this run -- its manifest was fixed.
+    # _NEW is no longer produced by this run; its manifest was fixed.
     stale = stale_baseline_entries([_ACCEPTED], baseline)
 
     assert len(stale) == 1

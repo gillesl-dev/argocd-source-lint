@@ -25,7 +25,7 @@ RULE_ID = "unresolvable-generator"
 class GeneratorContext:
     """Everything a generator resolver needs besides its own generator
     dict, threaded unchanged through every level of `_resolve_generator`'s
-    recursion (`matrix`/`merge` calling back into it for each child) --
+    recursion (`matrix`/`merge` calling back into it for each child);
     bundled here instead of six positional parameters repeated across
     every one of those functions."""
 
@@ -36,7 +36,7 @@ class GeneratorContext:
     severity: Severity
 
 
-# Classic ApplicationSet templating (`{{key}}`, valyala/fasttemplate) —
+# Classic ApplicationSet templating (`{{key}}`, valyala/fasttemplate).
 # `spec.goTemplate: true` switches to Go template syntax instead, which is
 # a different rendering engine entirely and out of scope v1 (see below).
 _PLACEHOLDER_RE = re.compile(r"\{\{\s*([\w.\-]+)\s*\}\}")
@@ -51,7 +51,7 @@ def discover(
     its generators would produce, so the existing rules apply to them
     unchanged. A generator this tool can't resolve locally (requires a
     live cluster/API, or Go-template rendering) produces one `info`
-    finding instead of guessing — same principle as an external
+    finding instead of guessing, following the same principle as an external
     `Application` source (see DESIGN.md)."""
     applications: list[Application] = []
     findings: list[Finding] = []
@@ -184,7 +184,7 @@ def _resolve_git(
 
     # The generator's own `revision` is independent of any generated
     # Application's `targetRevision` (confirmed against the upstream Git
-    # generator docs) -- discovering `directories`/`files` from the
+    # generator docs). Discovering `directories`/`files` from the
     # checked-out working tree regardless was a real, silent-wrong-result
     # gap: a `revision` pinned away from HEAD would enumerate today's
     # directory structure, not the pinned one. Same snapshot mechanism as
@@ -193,7 +193,7 @@ def _resolve_git(
     revision = git_generator.get("revision") or "HEAD"
     matches_checkout = revision_matches_checkout(ctx.repo_root, revision)
     if matches_checkout is None:
-        # `is None`, not `is False` -- a revision that doesn't resolve at
+        # `is None`, not `is False`: a revision that doesn't resolve at
         # all must never fall through as "matches HEAD" by default.
         return [], [
             _finding(
@@ -264,11 +264,11 @@ def _resolve_git_files(repo_root: Path, entries: list[Any]) -> list[dict[str, st
 
 
 # Real-world matrix uses (environments x regions, clusters x apps) rarely
-# reach even the low hundreds -- generous headroom, chosen the same way as
+# reach even the low hundreds, so this is generous headroom, chosen the same way as
 # fsutil's `_MAX_EXPANDED_NODES`: far below where the cost actually starts
 # to matter. Confirmed for real, not theoretical: two `list` generators of
 # 5,000 small elements each (comfortably under the alias-bomb node budget
-# on their own -- that budget catches a densely *aliased* document, not a
+# on their own; that budget catches a densely *aliased* document, not a
 # large but flat one) produced 25,000,000 combinations in ~7s for the
 # combine step alone, before a single generated Application is even built
 # or run through a rule.
@@ -282,7 +282,7 @@ def _resolve_matrix(
 
     if len(children) > 2:
         # ArgoCD's own matrix generator only supports combining exactly
-        # two child generators -- the controller reports an error on more
+        # two child generators: the controller reports an error on more
         # (see DESIGN.md), it doesn't just behave unpredictably. Guessing
         # at a 3+-way cartesian product here would report Applications
         # ArgoCD itself would never actually generate.
@@ -359,7 +359,7 @@ def _resolve_merge(
 
     base_params, base_unresolvable = child_results[0]
     if base_unresolvable:
-        # No base entries to match against at all — same reasoning as
+        # No base entries to match against at all, same reasoning as
         # matrix's cross product being empty when a factor is empty.
         return [], findings
 
@@ -367,8 +367,8 @@ def _resolve_merge(
     # (see DESIGN.md); a later generator only overrides fields on an
     # entry whose merge keys already match one from the base, and its
     # own non-matching entries are discarded rather than added as new
-    # ones. An unresolvable later generator just contributes no override
-    # — its own finding above already flags the gap, so this doesn't
+    # ones. An unresolvable later generator just contributes no override:
+    # its own finding above already flags the gap, so this doesn't
     # silently drop the (fully known) base entries over it.
     merged = [dict(entry) for entry in base_params]
     by_key = {tuple(entry.get(key, "") for key in merge_keys): entry for entry in merged}
@@ -412,7 +412,7 @@ def _load_params_file(path: Path) -> Any:
         return None
     # This bypasses fsutil.load_yaml_documents' own budget check (a
     # `files:` generator target isn't a `kind: Application`-shaped
-    # document, so it never goes through that path) -- checked directly
+    # document, so it never goes through that path); checked directly
     # instead of letting a YAML alias bomb reach _flatten_params' str().
     return content if is_within_budget(content) else None
 

@@ -133,7 +133,7 @@ def test_wildcard_kind_ignore_diff_rule_matches(git_repo):
 
 def test_ignore_diff_rule_for_a_different_group_does_not_match(git_repo):
     """`group` empty/omitted means the *core* API group, distinct from
-    `apps` -- a rule that forgets `group: apps` silently never covers a
+    `apps`: a rule that forgets `group: apps` silently never covers a
     Deployment/StatefulSet, ArgoCD-side. Confirms we don't treat an empty
     group as a wildcard."""
     repo_root = git_repo(

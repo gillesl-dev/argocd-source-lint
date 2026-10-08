@@ -11,7 +11,7 @@ RULE_ID = "malformed-ignore-diff-jq-expression"
 
 class MalformedIgnoreDiffJqExpressionRule(Rule):
     """`ignoreDifferences[].jqPathExpressions` entries are compiled by
-    ArgoCD's own `gojq` engine as `del(<expression>)` -- every real
+    ArgoCD's own `gojq` engine as `del(<expression>)`; every real
     example in ArgoCD's own docs, and every jq path expression in
     general, starts with `.` (`.spec.replicas`, `.metadata.labels["x"]`).
     An entry that doesn't is almost certainly a `jsonPointers`-style
@@ -19,7 +19,7 @@ class MalformedIgnoreDiffJqExpressionRule(Rule):
     replicas`), which fails to parse as jq. Confirmed against ArgoCD's
     own source (`NewIgnoreNormalizer`, `util/argo/normalizers/
     diff_normalizer.go`): a parse failure aborts building the normalizer
-    for the *whole* `ignoreDifferences` list, not just this one entry --
+    for the *whole* `ignoreDifferences` list, not just this one entry:
     a wider blast radius than `malformed-ignore-diff-pointer`'s, and
     matching real community reports of `jqPathExpressions` that "apply
     without errors but don't actually do anything" (see DESIGN.md)."""

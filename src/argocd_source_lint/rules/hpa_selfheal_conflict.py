@@ -17,7 +17,7 @@ _RESPECT_IGNORE_DIFFERENCES = "RespectIgnoreDifferences=true"
 # used only when the HPA doesn't spell out `scaleTargetRef.apiVersion`
 # itself (it's optional in practice even though the CrossVersionObjectReference
 # schema marks it required). A kind outside this map is skipped rather than
-# guessed at -- e.g. a custom scalable CRD like Argo Rollouts' `Rollout`.
+# guessed at (e.g. a custom scalable CRD like Argo Rollouts' `Rollout`).
 _KNOWN_TARGET_GROUPS = {
     "Deployment": "apps",
     "StatefulSet": "apps",
@@ -30,7 +30,7 @@ class HpaSelfHealConflictRule(Rule):
     """A `HorizontalPodAutoscaler` and `selfHeal: true` both managing the
     same `spec.replicas` field is a well-known ArgoCD footgun (see
     DESIGN.md): `ignoreDifferences` alone only affects diff calculation,
-    not the sync itself -- the `RespectIgnoreDifferences` sync option is
+    not the sync itself; the `RespectIgnoreDifferences` sync option is
     also required, and is easy to miss."""
 
     rule_id = RULE_ID

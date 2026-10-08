@@ -11,13 +11,13 @@ RULE_ID = "duplicate-application-name"
 
 
 class DuplicateApplicationNameRule(Rule):
-    """ArgoCD keys an `Application` by `(namespace, name)` -- two
+    """ArgoCD keys an `Application` by `(namespace, name)`: two
     manifests declaring the same pair silently overwrite/fight each
     other in the cluster, with nothing wrong visible from either
     manifest read on its own (see multiple real reports, e.g.
     argoproj/argo-cd#9420, #23808, #15874). Applies equally to two plain
     manifests, a plain manifest colliding with an `ApplicationSet`-generated
-    one, or two generated entries from the same generator's own output --
+    one, or two generated entries from the same generator's own output;
     the `applications` list this rule receives already includes both
     (see `cli.py`)."""
 
@@ -49,7 +49,7 @@ class DuplicateApplicationNameRule(Rule):
 def _finding(name: str, namespace: str, apps: list[Application], severity: Severity) -> Finding:
     # An ApplicationSet generating several colliding entries from its own
     # generator all share the same source_file (the ApplicationSet's own
-    # manifest, see DESIGN.md "Finding.line") -- de-duplicated so it's
+    # manifest, see DESIGN.md "Finding.line"), de-duplicated so it's
     # only listed once.
     files = sorted({app.source_file.as_posix() for app in apps})
 

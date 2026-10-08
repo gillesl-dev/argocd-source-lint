@@ -14,8 +14,8 @@ class RevisionMismatchRule(Rule):
     """orphan-source, missing-ignore-diff and double-coverage resolve a
     local source's files against a snapshot of its own `targetRevision`
     when that differs from what's checked out (see
-    `git_context.materialize_revision`, DESIGN.md "targetRevision drift")
-    — so their result stays correct either way. This is purely an FYI
+    `git_context.materialize_revision`, DESIGN.md "targetRevision drift"),
+    so their result stays correct either way. This is purely an FYI
     that a source is pinned away from HEAD, for a human reading the
     report, not a correctness caveat."""
 
@@ -39,7 +39,7 @@ class RevisionMismatchRule(Rule):
                     checked[revision] = revision_matches_checkout(repo_root, revision)
                 if checked[revision] is not False:
                     # True: matches HEAD, nothing to report. None: not
-                    # resolvable at all -- phantom-target/broken-values-ref
+                    # resolvable at all; phantom-target/broken-values-ref
                     # already flag that shallow-clone case on their own.
                     continue
 
