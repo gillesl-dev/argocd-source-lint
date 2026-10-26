@@ -1,0 +1,43 @@
+name: False positive or missed finding
+description: A rule fires when it shouldn't, or stays silent on something it should catch
+labels: ["false-positive"]
+body:
+  - type: dropdown
+    id: rule
+    attributes:
+      label: Rule
+      options:
+        - orphan-source
+        - broken-values-ref
+        - missing-ignore-diff
+        - phantom-target
+        - unresolvable-generator
+        - double-coverage
+        - revision-mismatch
+        - project-scope-violation
+        - hpa-selfheal-conflict
+        - sync-validation-disabled
+        - duplicate-application-name
+        - malformed-ignore-diff-pointer
+        - malformed-ignore-diff-jq-expression
+        - unknown-sync-option
+        - unknown-resource-hook
+        - malformed-sync-wave
+        - floating-target-revision
+        - Not sure
+    validations:
+      required: true
+  - type: textarea
+    id: manifest
+    attributes:
+      label: Application manifest and any referenced file
+      description: The smallest manifest that reproduces the false positive or the miss. Remove anything sensitive first.
+    validations:
+      required: true
+  - type: textarea
+    id: why
+    attributes:
+      label: Why the current result is wrong
+      description: What ArgoCD actually does with this manifest, and how you confirmed it (a real sync, the ArgoCD docs, the ArgoCD source).
+    validations:
+      required: true

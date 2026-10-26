@@ -1,0 +1,32 @@
+name: Bug report
+description: The CLI crashes, exits with the wrong code, or produces a finding that is clearly wrong
+labels: ["bug"]
+body:
+  - type: input
+    id: version
+    attributes:
+      label: argocd-source-lint version
+      description: Output of `argocd-source-lint --version`
+    validations:
+      required: true
+  - type: textarea
+    id: config
+    attributes:
+      label: .argocd-lint.yaml
+      description: Paste the relevant part of your config, if any. Remove anything sensitive first.
+      render: yaml
+  - type: textarea
+    id: repro
+    attributes:
+      label: Minimal reproduction
+      description: >
+        A small Application manifest (and any referenced file) that reproduces the issue. A link
+        to a public repo works too.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected vs actual output
+    validations:
+      required: true

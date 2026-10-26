@@ -1,0 +1,23 @@
+name: New rule or operator signature
+description: Suggest a new rule, or a new known_operators entry for missing-ignore-diff
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: failure
+    attributes:
+      label: What silent failure does this catch
+      description: >
+        Describe the ArgoCD behavior this would detect, and what happens today without a warning
+        (a wrong field gets reset, a sync silently no-ops, etc).
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Source
+      description: >
+        A link to the ArgoCD docs, the ArgoCD source, or the operator's own documentation
+        confirming the behavior. See CONTRIBUTING.md: a signature is only added once the
+        documented behavior is confirmed, not inferred from an example.
+    validations:
+      required: true
