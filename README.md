@@ -15,6 +15,7 @@ It catches cases that are easy to miss because ArgoCD may still report an Applic
 ## Contents
 
 - [What the tool does](#what-the-tool-does)
+- [Compared to other tools](#compared-to-other-tools)
 - [How it works](#how-it-works)
 - [Limitations](#limitations)
 - [Installation](#installation)
@@ -112,6 +113,27 @@ $ argocd-source-lint /home/user/gitops-repo
 
 Three errors and two warnings here, so the process exits with code 1 (see
 [Exit codes](#exit-codes) below).
+
+[`examples/full-coverage`](./examples/full-coverage) has one deliberately broken Application
+per rule. Clone the repository and run the linter against that folder to see all of them fire
+on a real checkout.
+
+## Compared to other tools
+
+Of the ArgoCD-adjacent tools found while researching this, none check for orphan sources,
+missing `ignoreDifferences`, phantom targets, or double coverage. They solve a different,
+complementary problem:
+
+| | Needs a cluster or a running ArgoCD | Primary purpose |
+| --- | --- | --- |
+| `argocd-source-lint` | No | Static analysis of the Git checkout: orphan sources, broken `$values` refs, missing `ignoreDifferences`, phantom targets, double coverage, floating `targetRevision`, and more |
+| [argocd-diff-preview](https://github.com/dag-andersen/argocd-diff-preview) | No (renders through ArgoCD's own code) | Shows the real rendered manifest diff on a pull request |
+| [kubechecks](https://github.com/zapier/kubechecks) | Yes | Schema/policy checks (`kubepug`, `kubeconform`, `conftest`) plus a live-state diff comment on a pull request |
+| [conftest](https://www.conftest.dev/) / [kubeconform](https://github.com/yannh/kubeconform) | No | Generic OPA policy checks and schema validation; not aware of ArgoCD's own semantics by themselves |
+
+`argocd-diff-preview` and `argocd-source-lint` answer different questions about the same pull
+request: one shows what would change, the other flags configuration that makes ArgoCD behave
+in a way Git doesn't record at all. The two compose well together.
 
 ## How it works
 
