@@ -3,6 +3,14 @@
 All notable changes to this project are documented in this file, following
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.2.2] - 2026-10-26
+
+### Added
+
+- Added `examples/full-coverage`, one deliberately broken Application per rule, runnable
+  directly from a clone. Linked from the README with a comparison against
+  `argocd-diff-preview`, `kubechecks`, and `conftest`/`kubeconform`.
+
 ## [1.2.1] - 2026-10-26
 
 ### Fixed
