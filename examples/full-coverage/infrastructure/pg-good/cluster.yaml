@@ -1,0 +1,7 @@
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: pg-good
+  namespace: postgres-prod
+spec:
+  instances: 3

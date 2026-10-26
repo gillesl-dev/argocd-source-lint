@@ -1,0 +1,25 @@
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: matrix-too-many-appset
+spec:
+  generators:
+    - matrix:
+        generators:
+          - list:
+              elements:
+                - env: dev
+          - list:
+              elements:
+                - region: eu
+          - list:
+              elements:
+                - tier: web
+  template:
+    metadata:
+      name: '{{env}}-{{region}}-{{tier}}-generated'
+    spec:
+      source:
+        repoURL: https://github.com/gillesl-dev/argocd-source-lint.git
+        targetRevision: HEAD
+        path: manifests/good-demo

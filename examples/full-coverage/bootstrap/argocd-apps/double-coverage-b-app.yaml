@@ -1,0 +1,9 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: double-coverage-b
+spec:
+  source:
+    repoURL: https://github.com/gillesl-dev/argocd-source-lint.git
+    targetRevision: HEAD
+    path: manifests/shared

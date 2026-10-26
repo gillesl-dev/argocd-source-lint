@@ -1,0 +1,19 @@
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: demo-appset
+spec:
+  generators:
+    - git:
+        repoURL: https://github.com/gillesl-dev/argocd-source-lint.git
+        revision: HEAD
+        directories:
+          - path: apps/*
+  template:
+    metadata:
+      name: '{{path.basename}}-generated'
+    spec:
+      source:
+        repoURL: https://github.com/gillesl-dev/argocd-source-lint.git
+        targetRevision: HEAD
+        path: 'apps/{{path.basename}}/does-not-exist'

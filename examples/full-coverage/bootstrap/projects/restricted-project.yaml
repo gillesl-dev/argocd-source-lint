@@ -1,0 +1,11 @@
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: restricted
+  namespace: argocd
+spec:
+  sourceRepos:
+    - https://github.com/gillesl-dev/argocd-source-lint.git
+  destinations:
+    - server: https://kubernetes.default.svc
+      namespace: allowed-ns

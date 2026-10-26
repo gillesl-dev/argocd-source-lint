@@ -1,0 +1,7 @@
+# argocd-lint:ignore
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ignored-orphan
+data:
+  key: value

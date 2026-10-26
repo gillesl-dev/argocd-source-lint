@@ -1,0 +1,14 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: project-scope-violation
+  namespace: argocd
+spec:
+  project: restricted
+  source:
+    repoURL: https://not-allowed.example.invalid/other-repo.git
+    targetRevision: main
+    path: some/path
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: forbidden-ns

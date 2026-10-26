@@ -1,0 +1,15 @@
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: clusters-appset
+spec:
+  generators:
+    - clusters: {}
+  template:
+    metadata:
+      name: '{{name}}-cluster-generated'
+    spec:
+      source:
+        repoURL: https://github.com/gillesl-dev/argocd-source-lint.git
+        targetRevision: HEAD
+        path: manifests/good-demo

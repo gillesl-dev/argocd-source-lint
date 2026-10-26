@@ -1,0 +1,13 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: broken-plain-valuefile
+  namespace: argocd
+spec:
+  source:
+    repoURL: https://github.com/gillesl-dev/argocd-source-lint.git
+    targetRevision: HEAD
+    path: manifests/plain-valuefile-demo
+    helm:
+      valueFiles:
+        - missing-values.yaml

@@ -1,0 +1,14 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: malformed-jq-demo
+  namespace: argocd
+spec:
+  source:
+    repoURL: https://github.com/gillesl-dev/argocd-source-lint.git
+    targetRevision: HEAD
+    path: manifests/malformed-jq-demo
+  ignoreDifferences:
+    - kind: ConfigMap
+      jqPathExpressions:
+        - /spec/replicas

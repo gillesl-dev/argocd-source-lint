@@ -1,0 +1,11 @@
+apiVersion: acid.zalan.do/v1
+kind: postgresql
+metadata:
+  name: zalando-missing
+  namespace: postgres-prod
+spec:
+  numberOfInstances: 3
+  users:
+    zalando:
+      - superuser
+      - createdb

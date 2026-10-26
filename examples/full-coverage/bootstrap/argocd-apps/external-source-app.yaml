@@ -1,0 +1,13 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: external-source-app
+  namespace: argocd
+spec:
+  source:
+    repoURL: https://gitlab.example.invalid/other-team/other-repo.git
+    targetRevision: main
+    path: some/path
+  syncPolicy:
+    automated:
+      selfHeal: true
