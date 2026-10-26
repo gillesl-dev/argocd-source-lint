@@ -6,5 +6,5 @@ metadata:
 spec:
   source:
     repoURL: https://github.com/gillesl-dev/argocd-source-lint.git
-    targetRevision: 3777371
+    targetRevision: "3777371"
     path: apps/dev
