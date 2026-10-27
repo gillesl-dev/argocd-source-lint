@@ -205,3 +205,80 @@ spec:
 
     assert len(findings) == 1
     assert findings[0].message.count("bootstrap/appsets/team-appset.yaml") == 1
+
+
+def _appset(name: str, namespace: str, generated: str, template_namespace: str = "") -> str:
+    template_ns = f"      namespace: {template_namespace}\n" if template_namespace else ""
+    return f"""\
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: {name}
+  namespace: {namespace}
+spec:
+  generators:
+    - list:
+        elements:
+          - service: {generated}
+  template:
+    metadata:
+      name: '{{{{service}}}}'
+{template_ns}    spec:
+      source:
+        repoURL: https://example.invalid/repo.git
+        targetRevision: HEAD
+        path: manifests/{name}
+"""
+
+
+def test_applicationsets_in_different_namespaces_generating_the_same_name_are_not_flagged(
+    git_repo,
+):
+    """Generated Applications land in their ApplicationSet's namespace, so
+    `team-a/api` and `team-b/api` are two distinct Applications."""
+    repo_root = git_repo(
+        {
+            "appsets/team-a.yaml": _appset("team-a", "team-a", "api"),
+            "appsets/team-b.yaml": _appset("team-b", "team-b", "api"),
+        }
+    )
+
+    assert _run_rule(repo_root) == []
+
+
+def test_generated_application_does_not_collide_with_a_plain_one_in_argocd(git_repo):
+    repo_root = git_repo(
+        {
+            "appsets/team-a.yaml": _appset("team-a", "team-a", "api"),
+            "bootstrap/argocd-apps/api.yaml": """\
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: api
+spec:
+  source:
+    repoURL: https://example.invalid/repo.git
+    targetRevision: HEAD
+    path: manifests/api
+""",
+        }
+    )
+
+    assert _run_rule(repo_root) == []
+
+
+def test_template_namespace_is_ignored_like_argocd_does(git_repo):
+    """ArgoCD overwrites the template's metadata.namespace with the
+    ApplicationSet's own, so two ApplicationSets in the same namespace still
+    collide even if their templates claim different namespaces."""
+    repo_root = git_repo(
+        {
+            "appsets/one.yaml": _appset("one", "team-a", "api", template_namespace="ns-one"),
+            "appsets/two.yaml": _appset("two", "team-a", "api", template_namespace="ns-two"),
+        }
+    )
+
+    findings = _run_rule(repo_root)
+
+    assert len(findings) == 1
+    assert "in namespace `team-a`" in findings[0].message

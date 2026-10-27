@@ -3,6 +3,20 @@
 All notable changes to this project are documented in this file, following
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+
+### Fixed
+
+- `double-coverage` no longer flags the same file deployed to different clusters or
+  namespaces, the usual ApplicationSet fan-out. It now compares each resource's actual
+  target: the destination cluster, and the resource's own `metadata.namespace` or else the
+  destination namespace, as ArgoCD does. A known cluster-scoped kind (`ClusterRole`,
+  `Namespace`...) is compared by cluster only. An undeterminable target is skipped rather
+  than reported.
+- `duplicate-application-name` placed every ApplicationSet-generated Application in
+  `argocd`. ArgoCD always creates them in the ApplicationSet's own namespace, so
+  ApplicationSets in different namespaces generating the same name were falsely reported.
+
 ## [1.2.2] - 2026-10-26
 
 ### Added

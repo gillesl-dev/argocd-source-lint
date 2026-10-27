@@ -106,15 +106,23 @@ def covered_files_for_application(
     and DESIGN.md "targetRevision drift"). Neither caller ever needs to
     open the file itself; `missing-ignore-diff` does, so it reads
     `covered_documents_for_application` instead."""
-    covered: set[Path] = set()
+    return {
+        identity for identity, _ in covered_file_paths_for_application(app, repo_root, local_origin)
+    }
+
+
+def covered_file_paths_for_application(
+    app: Application, repo_root: Path, local_origin: str | None
+) -> Iterator[tuple[Path, Path]]:
+    """(repo-relative identity, readable path) for every covered file. The
+    readable path may live in a snapshot of a divergent `targetRevision`."""
     for source in local_path_sources(app, local_origin):
         resolved = _resolved_source_root(repo_root, source)
         if resolved is None:
             continue
         base_root, source_dir = resolved
         for found in covered_files_for_source(source_dir, source, base_root):
-            covered.add(found.resolve().relative_to(base_root))
-    return covered
+            yield found.resolve().relative_to(base_root), found
 
 
 def covered_documents_for_application(

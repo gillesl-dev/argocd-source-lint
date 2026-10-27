@@ -268,9 +268,27 @@ ApplicationSet.
 
 ## `double-coverage`
 
-`double-coverage` reports a file owned by more than one different Application. Two
-sources inside the same Application are not flagged because they still belong to one
-reconciliation loop.
+`double-coverage` reports a resource that more than one different Application deploys to
+the same place. Two sources inside the same Application are not flagged because they still
+belong to one reconciliation loop.
+
+The same file deployed to two clusters or two namespaces is two distinct resources. That is
+the usual ApplicationSet pattern (one base, one Application per environment), and flagging it
+was the rule's worst false positive. A resource's target is computed the way ArgoCD does it:
+
+- the cluster is `destination.server`, or `destination.name`. The two forms are never
+  compared with each other, since mapping a name to a URL needs live cluster data;
+- the namespace is the resource's own `metadata.namespace` when set, otherwise
+  `destination.namespace`. ArgoCD's Application spec: "The namespace will only be set for
+  namespace-scoped resources that have not set a value for .metadata.namespace";
+- cluster-scoped kinds are compared by cluster only. The list is limited to kinds the
+  Kubernetes docs state are not namespaced (`Namespace`, `Node`, `PersistentVolume`,
+  `StorageClass`, `ClusterRole`, `ClusterRoleBinding`, `PriorityClass`,
+  `CustomResourceDefinition`). Any other kind, CRDs included, is treated as namespaced.
+
+When the target can't be determined (no destination, a value still holding an unresolved
+`{{...}}`, URL against name), the resource is skipped. A missed conflict is preferred over a
+blocking false positive.
 
 ## `targetRevision` drift
 
@@ -335,6 +353,12 @@ pair can overwrite or fight each other.
 
 The rule runs after plain and ApplicationSet-generated Applications are combined.
 Namespace defaults to `"argocd"` when omitted.
+
+A generated Application always gets its ApplicationSet's namespace, whatever the template's
+`metadata.namespace` says. ArgoCD's `GenerateApplications`
+(`applicationset/controllers/template/template.go`) overwrites it unconditionally "to preserve
+the appsets-in-any-namespace security boundary". Two ApplicationSets in different namespaces
+generating the same name are therefore not duplicates.
 
 ## `malformed-ignore-diff-pointer`
 

@@ -103,6 +103,7 @@ def _expand(
         ]
 
     template = spec.get("template") or {}
+    appset_namespace = metadata.get("namespace") or "argocd"
     applications: list[Application] = []
     findings: list[Finding] = []
 
@@ -113,20 +114,30 @@ def _expand(
         findings.extend(generator_findings)
         for params in param_sets:
             applications.append(
-                _build_generated_application(template, params, manifest_path, repo_root)
+                _build_generated_application(
+                    template, params, manifest_path, repo_root, appset_namespace
+                )
             )
 
     return applications, findings
 
 
 def _build_generated_application(
-    template: dict[str, Any], params: dict[str, str], manifest_path: Path, repo_root: Path
+    template: dict[str, Any],
+    params: dict[str, str],
+    manifest_path: Path,
+    repo_root: Path,
+    appset_namespace: str,
 ) -> Application:
     rendered = _substitute(template, params)
+    # ArgoCD always overwrites a generated Application's namespace with the
+    # ApplicationSet's own, ignoring the template's (GenerateApplications in
+    # applicationset/controllers/template/template.go).
+    metadata = {**(rendered.get("metadata") or {}), "namespace": appset_namespace}
     doc = {
         "apiVersion": "argoproj.io/v1alpha1",
         "kind": "Application",
-        "metadata": rendered.get("metadata") or {},
+        "metadata": metadata,
         "spec": rendered.get("spec") or {},
     }
     return build_application(doc, manifest_path, repo_root)

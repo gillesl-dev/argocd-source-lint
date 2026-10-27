@@ -7,3 +7,6 @@ spec:
     repoURL: https://github.com/gillesl-dev/argocd-source-lint.git
     targetRevision: HEAD
     path: manifests/shared
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: shared
