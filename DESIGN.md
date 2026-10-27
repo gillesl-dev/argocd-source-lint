@@ -334,6 +334,11 @@ ArgoCD applies different matching semantics:
 Missing `"default"` is treated as ArgoCD's permissive built-in project. A missing named
 project is reported as `info`.
 
+Several AppProjects with the same name in the repository (one per folder in a template repo
+with a tree per provider) are reported as `info`, and the Application is not checked. The
+repository alone does not say which one ArgoCD will load; checking against whichever was
+read last reported Applications against another folder's project.
+
 ## `hpa-selfheal-conflict`
 
 An HPA and ArgoCD self-heal can fight over `spec.replicas`. `ignoreDifferences` alone
@@ -363,6 +368,13 @@ A generated Application always gets its ApplicationSet's namespace, whatever the
 (`applicationset/controllers/template/template.go`) overwrites it unconditionally "to preserve
 the appsets-in-any-namespace security boundary". Two ApplicationSets in different namespaces
 generating the same name are therefore not duplicates.
+
+A name the Kubernetes API server would refuse is not compared. On create, a custom resource's
+name is validated with `NameIsDNSSubdomain` (apiextensions-apiserver,
+`pkg/registry/customresource/validator.go`): lowercase alphanumerics, `-` and `.`, at most
+253 characters. A template's unfilled `<CLUSTER_NAME>-cert-manager` or an unresolved
+`{{env}}` therefore names an Application that can never exist, and two copies of it say
+nothing about the names that will actually be created.
 
 ## `malformed-ignore-diff-pointer`
 

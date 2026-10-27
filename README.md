@@ -190,6 +190,14 @@ still a real, committed file that the content-based rules (`missing-ignore-diff`
 `hpa-selfheal-conflict`, and others) read directly, even though the overlay itself
 isn't applied.
 
+### Several GitOps trees in one repository
+
+The repository is read as one GitOps tree. A template repository holding one tree per cloud
+provider or per cluster, each meant to be deployed on its own, is still read as one: the same
+Application name in two trees is reported as `duplicate-application-name`. Names that still
+contain an unfilled placeholder such as `<CLUSTER_NAME>` are not compared, since no
+Application can be created with them.
+
 ### ApplicationSet
 
 The following generators can be resolved locally:

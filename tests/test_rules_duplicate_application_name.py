@@ -282,3 +282,43 @@ def test_template_namespace_is_ignored_like_argocd_does(git_repo):
 
     assert len(findings) == 1
     assert "in namespace `team-a`" in findings[0].message
+
+
+def _named(name: str) -> str:
+    return f"""apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: '{name}'
+spec:
+  source:
+    repoURL: https://example.invalid/repo.git
+    targetRevision: HEAD
+    path: manifests/app
+"""
+
+
+def test_names_the_api_server_would_refuse_are_not_compared(git_repo):
+    """A template's unfilled `<CLUSTER_NAME>-app` can never be created
+    (custom resource names must be DNS subdomains), so two copies of it
+    can't collide: the real names depend on what fills the placeholder."""
+    repo_root = git_repo(
+        {
+            "templates/cluster/app.yaml": _named("<CLUSTER_NAME>-cert-manager"),
+            "templates/vcluster/app.yaml": _named("<CLUSTER_NAME>-cert-manager"),
+            "templates/a/upper.yaml": _named("Web"),
+            "templates/b/upper.yaml": _named("Web"),
+        }
+    )
+
+    assert _run_rule(repo_root) == []
+
+
+def test_valid_dotted_names_are_still_compared(git_repo):
+    repo_root = git_repo(
+        {
+            "bootstrap/argocd-apps/a.yaml": _named("web.team-a"),
+            "bootstrap/argocd-apps/b.yaml": _named("web.team-a"),
+        }
+    )
+
+    assert len(_run_rule(repo_root)) == 1

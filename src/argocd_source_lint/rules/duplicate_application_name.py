@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from collections import defaultdict
 from pathlib import Path
 
@@ -8,6 +9,17 @@ from argocd_source_lint.policy import Policy
 from argocd_source_lint.rules.base import Rule
 
 RULE_ID = "duplicate-application-name"
+
+# Kubernetes validates a custom resource's name on create with
+# `NameIsDNSSubdomain` (apiextensions-apiserver, customresource/validator.go).
+_DNS_SUBDOMAIN = re.compile(r"[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*")
+
+
+def is_dns_subdomain(name: str) -> bool:
+    """False for a name the API server would refuse, such as a template's
+    unfilled `<CLUSTER_NAME>-app` or an unresolved `{{env}}`: that
+    Application can never exist, so it can't collide with another one."""
+    return len(name) <= 253 and _DNS_SUBDOMAIN.fullmatch(name) is not None
 
 
 class DuplicateApplicationNameRule(Rule):
@@ -34,7 +46,7 @@ class DuplicateApplicationNameRule(Rule):
         groups: dict[tuple[str, str], list[Application]] = defaultdict(list)
 
         for app in applications:
-            if app.name:
+            if is_dns_subdomain(app.name):
                 groups[(app.namespace, app.name)].append(app)
 
         findings = [

@@ -36,6 +36,13 @@ All notable changes to this project are documented in this file, following
 
 ### Fixed
 
+- `project-scope-violation` checked an Application against whichever AppProject of that
+  name was read last. With several same-named AppProjects (one per folder in a template
+  repository), Applications were reported against another folder's project. It now reports
+  `info` and skips the check, since the repository alone does not say which one applies.
+- `duplicate-application-name` no longer compares names the Kubernetes API server would
+  refuse (not a DNS subdomain), such as a template's unfilled `<CLUSTER_NAME>-app`. Such an
+  Application can never be created, so two copies of it are not a collision.
 - On Windows, JSON, SARIF, JUnit and GitLab reports written to stdout came out in the
   console code page (cp1252) instead of UTF-8, so a `—` in a message became an invalid
   byte for any UTF-8 reader. They are now always written as UTF-8, as `--output` already

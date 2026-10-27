@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import fnmatch
+from collections import defaultdict
 from pathlib import Path
 
 from argocd_source_lint.app_projects import discover_app_projects
@@ -39,11 +40,26 @@ class ProjectScopeViolationRule(Rule):
         local_origin: str | None,
     ) -> list[Finding]:
         severity = policy.rules.get(RULE_ID, Severity.ERROR)
-        projects_by_name = {p.name: p for p in discover_app_projects(repo_root)}
+        projects_by_name: dict[str, list[AppProject]] = defaultdict(list)
+        for discovered in discover_app_projects(repo_root):
+            projects_by_name[discovered.name].append(discovered)
         findings: list[Finding] = []
 
         for app in applications:
-            project = projects_by_name.get(app.project)
+            candidates = projects_by_name.get(app.project, [])
+            if len(candidates) > 1:
+                # Checking against whichever was read last reported
+                # Applications against another folder's AppProject.
+                files = ", ".join(sorted(p.source_file.as_posix() for p in candidates))
+                findings.append(
+                    _info(
+                        app,
+                        f"{len(candidates)} AppProjects named `{app.project}` in this repo "
+                        f"({files}); cannot tell which one applies, scope not verified.",
+                    )
+                )
+                continue
+            project = candidates[0] if candidates else None
             if project is None:
                 # "default" not found in the repo: assumed to be
                 # ArgoCD's own auto-created, permissive one; flagging

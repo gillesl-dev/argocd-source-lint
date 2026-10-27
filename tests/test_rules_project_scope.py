@@ -421,3 +421,51 @@ spec:
 
     assert len(findings) == 1
     assert findings[0].severity == Severity.WARNING
+
+
+def _project(destination_namespace: str) -> str:
+    return f"""apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: team-a
+spec:
+  sourceRepos:
+    - '*'
+  destinations:
+    - server: https://kubernetes.default.svc
+      namespace: {destination_namespace}
+"""
+
+
+def test_same_named_appprojects_are_reported_info_not_checked_against_one_of_them(git_repo):
+    """Two folders each declaring an AppProject `team-a` (a template repo
+    with one tree per provider): the rule used to check against whichever
+    was read last, reporting an Application against the other folder's
+    project."""
+    repo_root = git_repo(
+        {
+            "bootstrap/argocd-apps/app.yaml": """apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: app
+spec:
+  project: team-a
+  source:
+    repoURL: https://example.invalid/repo.git
+    targetRevision: HEAD
+    path: manifests/app
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: team-a-prod
+""",
+            "aws/appprojects/team-a.yaml": _project("team-a-prod"),
+            "gcp/appprojects/team-a.yaml": _project("something-else"),
+        }
+    )
+
+    findings = _run_rule(repo_root)
+
+    assert len(findings) == 1
+    assert findings[0].severity == Severity.INFO
+    assert "2 AppProjects named `team-a`" in findings[0].message
+    assert "aws/appprojects/team-a.yaml" in findings[0].message
