@@ -277,7 +277,11 @@ the usual ApplicationSet pattern (one base, one Application per environment), an
 was the rule's worst false positive. A resource's target is computed the way ArgoCD does it:
 
 - the cluster is `destination.server`, or `destination.name`. The two forms are never
-  compared with each other, since mapping a name to a URL needs live cluster data;
+  compared with each other, since mapping a name to a URL needs live cluster data. This
+  includes `in-cluster` against `https://kubernetes.default.svc`: ArgoCD's
+  `GetClusterServersByName` (`util/db/cluster.go`) only maps that name to that URL when no
+  cluster secret is named `in-cluster`, and the local cluster can be renamed through its own
+  secret. Known limit: the same cluster written once by URL and once by name is not compared;
 - the namespace is the resource's own `metadata.namespace` when set, otherwise
   `destination.namespace`. ArgoCD's Application spec: "The namespace will only be set for
   namespace-scoped resources that have not set a value for .metadata.namespace";

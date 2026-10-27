@@ -12,7 +12,9 @@ All notable changes to this project are documented in this file, following
   target: the destination cluster, and the resource's own `metadata.namespace` or else the
   destination namespace, as ArgoCD does. A known cluster-scoped kind (`ClusterRole`,
   `Namespace`...) is compared by cluster only. An undeterminable target is skipped rather
-  than reported.
+  than reported. Known limit: a cluster written as `destination.server` in one Application
+  and as `destination.name` in the other (`in-cluster` included) is not compared, since the
+  name-to-URL mapping depends on live ArgoCD cluster secrets.
 - `duplicate-application-name` placed every ApplicationSet-generated Application in
   `argocd`. ArgoCD always creates them in the ApplicationSet's own namespace, so
   ApplicationSets in different namespaces generating the same name were falsely reported.
