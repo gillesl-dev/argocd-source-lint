@@ -14,6 +14,11 @@
 
 set -euo pipefail
 
+# Git lance les hooks avec LC_CTYPE=C.UTF-8 ; dans cette locale, le grep de Git
+# for Windows ne matche pas l'emoji du motif. La locale C compare octet par octet,
+# de façon identique partout.
+export LC_ALL=C
+
 msg_file="$1"
 trailer="Assisted-by: Claude Code"
 

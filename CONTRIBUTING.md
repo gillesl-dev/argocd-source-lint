@@ -6,7 +6,8 @@ non-obvious implementation decisions.
 ## AI assistance
 
 Parts of the code and documentation were written with an AI assistant (Claude Code). Commits
-carry an `Assisted-by` trailer. All changes are reviewed and merged by the maintainer.
+since `v1.2.0` carry an `Assisted-by` trailer; earlier commits carry no attribution trailer.
+All changes are reviewed and merged by the maintainer.
 
 If you use Claude Code on this repository, run `git config core.hooksPath .githooks` once per
 clone. It normalizes AI attribution to that same trailer regardless of what the tool writes by
