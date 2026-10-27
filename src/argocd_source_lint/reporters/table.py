@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from collections import Counter
+
 from rich.console import Console
 from rich.markup import escape
 from rich.table import Table
@@ -13,6 +15,30 @@ _SEVERITY_STYLE = {
     Severity.INFO: "cyan",
     Severity.UNVERIFIABLE: "bold magenta",
 }
+
+
+def render_info_summary(console: Console, infos: list[Finding]) -> None:
+    """One line per kind of hidden `info` finding, so none of them vanishes
+    without a count. An external source is counted once, not once per rule
+    that skipped it."""
+    if not infos:
+        return
+    external = [finding for finding in infos if finding.external_source]
+    other = Counter(finding.rule_id for finding in infos if not finding.external_source)
+
+    console.print(f"{len(infos)} info finding(s) not listed. Pass --show-info to list them.")
+    if external:
+        sources = {
+            (finding.application, finding.file.as_posix(), finding.line, finding.message)
+            for finding in external
+        }
+        rules = {finding.rule_id for finding in external}
+        console.print(
+            f"  {len(sources)} Application source(s) in another repo, not inspected: "
+            f"{len(external)} finding(s) across {len(rules)} rule(s)"
+        )
+    for rule_id, count in sorted(other.items()):
+        console.print(f"  {count} {escape(visible_controls(rule_id))}")
 
 
 def render_findings(console: Console, findings: list[Finding]) -> None:

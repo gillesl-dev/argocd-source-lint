@@ -9,8 +9,14 @@ All notable changes to this project are documented in this file, following
 
 - Added `--fail-on-empty`, which exits with code 1 when no ArgoCD Application is found.
   Without it, the exit code is unchanged (`0`).
+- Added `--show-info` to list `info` findings in the table output (see below).
 
 ### Changed
+
+- The table output no longer lists `info` findings. It prints one count per rule below the
+  table instead, and counts a source in another repository once rather than once per rule
+  (one external Helm chart used to produce 7 identical rows). `--show-info` restores the
+  full list. JSON, SARIF, JUnit and GitLab reports, baselines and exit codes are unchanged.
 
 - When no ArgoCD Application is found, the table output now prints a warning instead of
   "No issues detected", since nothing was checked. The other formats keep the same report

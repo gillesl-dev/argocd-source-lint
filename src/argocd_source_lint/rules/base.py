@@ -34,4 +34,5 @@ def external_source_finding(rule_id: str, app: Application, source: Source) -> F
         ),
         file=app.source_file,
         line=source.line,
+        external_source=True,
     )

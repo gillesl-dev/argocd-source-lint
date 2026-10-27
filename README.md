@@ -114,6 +114,11 @@ $ argocd-source-lint /home/user/gitops-repo
 Three errors and two warnings here, so the process exits with code 1 (see
 [Exit codes](#exit-codes) below).
 
+`info` findings never block CI, so the table only counts them, one line per rule, below the
+table. A source in another repository is counted once, although several rules each report
+it. Pass `--show-info` to list them. JSON, SARIF, JUnit and GitLab reports always include
+every finding.
+
 [`examples/full-coverage`](./examples/full-coverage) has one deliberately broken Application
 per rule. Clone the repository and run the linter against that folder to see all of them fire
 on a real checkout.

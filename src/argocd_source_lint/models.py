@@ -123,3 +123,7 @@ class Finding(BaseModel):
     message: str
     file: Path
     line: int | None = None
+    # Set by `rules.base.external_source_finding` only, so the table can
+    # report the same out-of-scope source once instead of once per rule.
+    # Excluded from `model_dump`: machine-readable reports are unchanged.
+    external_source: bool = Field(default=False, exclude=True)

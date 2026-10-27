@@ -16,3 +16,6 @@ uvx argocd-source-lint .
 A few Applications point at `some/path` in a different repository, or request an
 `ApplicationSet` generator that needs live cluster access. Those are expected to come back as
 `info`: this tool only reads the local Git checkout, see the main [README](../../README.md#limitations).
+
+Since 1.3.0 the table only counts `info` findings, which includes `sync-validation-disabled`
+and `revision-mismatch` by default. Add `--show-info` to see their rows.

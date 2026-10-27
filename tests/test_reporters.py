@@ -12,6 +12,7 @@ from argocd_source_lint.policy import DEFAULT_RULE_SEVERITIES
 from argocd_source_lint.reporters import gitlab_codequality, json_report, junit, sarif
 from argocd_source_lint.reporters.sarif import _RULES_METADATA
 from argocd_source_lint.reporters.table import render_findings as render_table
+from argocd_source_lint.reporters.table import render_info_summary
 
 _FINDING_NO_LINE = Finding(
     rule_id="orphan-source",
@@ -183,6 +184,55 @@ def test_table_escapes_rich_markup_in_repo_controlled_fields():
     assert "[bold red on white]FAKE[/bold red on white]" in output
     assert "[link=https://evil.example]x[/link]" in output
     assert "[green]looks legit[/green]" in output
+
+
+def _external(rule_id: str, application: str = "web") -> Finding:
+    return Finding(
+        rule_id=rule_id,
+        severity=Severity.INFO,
+        application=application,
+        message="Source `charts/web` (external repo): out of scope v1",
+        file=Path(f"apps/{application}.yaml"),
+        line=7,
+        external_source=True,
+    )
+
+
+def test_info_summary_counts_an_external_source_once_and_names_other_info_rules():
+    infos = [
+        _external("orphan-source"),
+        _external("phantom-target"),
+        _external("orphan-source", application="api"),
+        _external("phantom-target", application="api"),
+        Finding(
+            rule_id="unresolvable-generator",
+            severity=Severity.INFO,
+            application="",
+            message="`clusters` generator requires live cluster/API access",
+            file=Path("appsets/x.yaml"),
+        ),
+    ]
+    console = Console(file=io.StringIO(), no_color=True, width=200)
+    render_info_summary(console, infos)
+
+    output = console.file.getvalue()
+    assert "5 info finding(s) not listed" in output
+    assert "2 Application source(s) in another repo, not inspected: 4 finding(s) across 2" in output
+    # An info that isn't about an external source is never folded into that line.
+    assert "1 unresolvable-generator" in output
+
+
+def test_info_summary_prints_nothing_without_info():
+    console = Console(file=io.StringIO(), no_color=True, width=200)
+    render_info_summary(console, [])
+
+    assert console.file.getvalue() == ""
+
+
+def test_external_source_flag_stays_out_of_machine_readable_reports():
+    payload = json.loads(json_report.render_findings([_external("orphan-source")]))
+
+    assert "external_source" not in payload["findings"][0]
 
 
 _FINDING_WITH_CONTROLS = Finding(

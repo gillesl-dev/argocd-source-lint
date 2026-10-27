@@ -313,6 +313,68 @@ def test_missing_scan_root_directory_is_reported_as_skipped(git_repo):
     assert "manifests/" not in result.stderr
 
 
+EXTERNAL_CHART_APP = """\
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: external-chart
+spec:
+  source:
+    repoURL: https://charts.other.invalid/repo.git
+    targetRevision: 1.0.0
+    path: charts/web
+"""
+
+
+def test_table_summarizes_info_findings_by_default(git_repo):
+    repo_root = git_repo(
+        {
+            ".argocd-lint.yaml": "scan_roots:\n  - manifests/\n",
+            "bootstrap/argocd-apps/external-chart.yaml": EXTERNAL_CHART_APP,
+            "manifests/.gitkeep": "",
+        }
+    )
+
+    result = runner.invoke(app, [str(repo_root)])
+
+    assert result.exit_code == 0
+    assert "info finding(s) not listed" in result.stdout
+    assert "1 Application source(s) in another repo, not inspected" in result.stdout
+    assert "DESIGN.md" not in result.stdout  # the per-rule message itself
+
+
+def test_show_info_lists_info_findings_in_the_table(git_repo):
+    repo_root = git_repo(
+        {
+            ".argocd-lint.yaml": "scan_roots:\n  - manifests/\n",
+            "bootstrap/argocd-apps/external-chart.yaml": EXTERNAL_CHART_APP,
+            "manifests/.gitkeep": "",
+        }
+    )
+
+    result = runner.invoke(app, [str(repo_root), "--show-info"])
+
+    assert result.exit_code == 0
+    assert "DESIGN.md" in result.stdout  # the per-rule message itself
+    assert "not listed" not in result.stdout
+
+
+def test_json_keeps_every_info_finding_without_show_info(git_repo):
+    repo_root = git_repo(
+        {
+            "bootstrap/argocd-apps/external-chart.yaml": EXTERNAL_CHART_APP,
+            "manifests/.gitkeep": "",
+        }
+    )
+
+    result = runner.invoke(app, [str(repo_root), "--format", "json"])
+
+    findings = json.loads(result.stdout)["findings"]
+    external = [f for f in findings if "external repo" in f["message"]]
+    assert len(external) > 1  # one per rule, as before
+    assert all("external_source" not in f for f in findings)
+
+
 def test_scan_root_name_with_control_characters_is_shown_not_emitted(git_repo):
     repo_root = git_repo(
         {

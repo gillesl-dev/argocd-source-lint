@@ -27,6 +27,7 @@ from argocd_source_lint.policy import Policy, load_policy
 from argocd_source_lint.reporters import gitlab_codequality, json_report, junit, sarif
 from argocd_source_lint.reporters.safe_text import visible_controls
 from argocd_source_lint.reporters.table import render_findings as render_table
+from argocd_source_lint.reporters.table import render_info_summary
 from argocd_source_lint.rules.base import Rule
 from argocd_source_lint.rules.broken_values_ref import BrokenValuesRefRule
 from argocd_source_lint.rules.double_coverage import DoubleCoverageRule
@@ -124,6 +125,14 @@ def lint(
         "--fail-on-empty",
         help="Exit with code 1 when no ArgoCD Application is found, instead of 0.",
     ),
+    show_info: bool = typer.Option(
+        False,
+        "--show-info",
+        help=(
+            "List info findings in the table output instead of summarizing them. "
+            "Other formats always include them."
+        ),
+    ),
 ) -> None:
     """Analyze the repo's ArgoCD Applications and report detected issues."""
     repo_root = path.resolve()
@@ -189,7 +198,7 @@ def lint(
         )
 
     notices = _skipped_check_notices(applications, repo_root, policy)
-    _report(format, new_findings, applications, repo_root, output, notices)
+    _report(format, new_findings, applications, repo_root, output, notices, show_info)
     if format != OutputFormat.TABLE:
         # stderr, so a JSON/SARIF/... report on stdout stays parseable.
         for notice in notices:
@@ -214,8 +223,7 @@ def _skipped_check_notices(
         if not (repo_root / scan_root).resolve().is_dir():
             notices.append(
                 f"scan_roots entry `{escape(visible_controls(scan_root))}` is not a "
-                "directory in this "
-                "repository, so orphan-source skipped it."
+                "directory in this repository, so orphan-source skipped it."
             )
     return notices
 
@@ -227,9 +235,10 @@ def _report(
     repo_root: Path,
     output: Path | None,
     notices: list[str],
+    show_info: bool,
 ) -> None:
     if output_format == OutputFormat.TABLE:
-        _report_table(findings, applications, repo_root, output, notices)
+        _report_table(findings, applications, repo_root, output, notices, show_info)
         return
 
     if output_format == OutputFormat.JSON:
@@ -266,17 +275,18 @@ def _report_table(
     repo_root: Path,
     output: Path | None,
     notices: list[str],
+    show_info: bool,
 ) -> None:
     count = len(applications)
     if output is None:
         console.print(f"[bold]{count}[/bold] ArgoCD Application(s) discovered under {repo_root}\n")
-        _render_table_body(console, findings, applications, notices)
+        _render_table_body(console, findings, applications, notices, show_info)
         return
 
     with output.open("w", encoding="utf-8") as f:
         file_console = Console(file=f, no_color=True, width=120)
         file_console.print(f"{count} ArgoCD Application(s) discovered under {repo_root}\n")
-        _render_table_body(file_console, findings, applications, notices)
+        _render_table_body(file_console, findings, applications, notices, show_info)
 
 
 def _render_table_body(
@@ -284,15 +294,21 @@ def _render_table_body(
     findings: list[Finding],
     applications: list[Application],
     notices: list[str],
+    show_info: bool,
 ) -> None:
     for notice in notices:
         target.print(f"[yellow]{notice}[/yellow]")
     if notices:
         target.print()
+    # One external Helm chart alone yields 7 identical infos, one per rule:
+    # summarized unless asked for (see render_info_summary).
+    hidden = [] if show_info else [f for f in findings if f.severity == Severity.INFO]
+    listed = findings if show_info else [f for f in findings if f.severity != Severity.INFO]
     # "No issues detected" with no Application would read as a clean
     # result when nothing was checked at all.
-    if applications or findings:
-        render_table(target, findings)
+    if applications or listed:
+        render_table(target, listed)
+    render_info_summary(target, hidden)
 
 
 def _exit_code(findings: list[Finding], policy: Policy) -> int:
