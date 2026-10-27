@@ -20,6 +20,14 @@ All notable changes to this project are documented in this file, following
   were previously skipped without a word. Same placement as the warning above; no exit
   code change.
 
+### Security
+
+- Control characters from the repository (an `\e` in a YAML string, for example) are now
+  shown as `\xNN` instead of being printed raw. In the table output, the warnings and the
+  configuration error messages, an ESC sequence in an Application name, a path or a
+  `scan_roots` entry could restyle or clear the terminal; `rich` markup escaping did not
+  cover it. In JUnit, one such character made the whole report invalid XML.
+
 ### Fixed
 
 - `double-coverage` no longer flags the same file deployed to different clusters or

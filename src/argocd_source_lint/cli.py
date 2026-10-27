@@ -24,6 +24,7 @@ from argocd_source_lint.loader import RawManifestDiscovery
 from argocd_source_lint.models import Application, Finding, Severity
 from argocd_source_lint.policy import Policy, load_policy
 from argocd_source_lint.reporters import gitlab_codequality, json_report, junit, sarif
+from argocd_source_lint.reporters.safe_text import visible_controls
 from argocd_source_lint.reporters.table import render_findings as render_table
 from argocd_source_lint.rules.base import Rule
 from argocd_source_lint.rules.broken_values_ref import BrokenValuesRefRule
@@ -149,7 +150,11 @@ def lint(
         for error in exc.errors():
             field = ".".join(str(part) for part in error["loc"])
             message = error["msg"].removeprefix("Value error, ")
-            console.print(f"  [red]{field}:[/red] {message}")
+            # The message can quote the invalid value from the repo.
+            console.print(
+                f"  [red]{escape(visible_controls(field))}:[/red] "
+                f"{escape(visible_controls(message))}"
+            )
         raise typer.Exit(code=2) from None
     applications = RawManifestDiscovery().discover(repo_root)
     local_origin = get_origin_url(repo_root)
@@ -207,7 +212,8 @@ def _skipped_check_notices(
     for scan_root in policy.scan_roots:
         if not (repo_root / scan_root).resolve().is_dir():
             notices.append(
-                f"scan_roots entry `{escape(scan_root)}` is not a directory in this "
+                f"scan_roots entry `{escape(visible_controls(scan_root))}` is not a "
+                "directory in this "
                 "repository, so orphan-source skipped it."
             )
     return notices

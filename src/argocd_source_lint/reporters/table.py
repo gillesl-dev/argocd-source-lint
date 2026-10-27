@@ -5,6 +5,7 @@ from rich.markup import escape
 from rich.table import Table
 
 from argocd_source_lint.models import Finding, Severity
+from argocd_source_lint.reporters.safe_text import visible_controls
 
 _SEVERITY_STYLE = {
     Severity.ERROR: "bold red",
@@ -43,11 +44,13 @@ def render_findings(console: Console, findings: list[Finding]) -> None:
         # output. `finding.severity.value`/`style` are never repo
         # content (a closed enum/style map this tool controls), so
         # that one stays real markup.
+        # `escape()` alone lets terminal control sequences through, hence
+        # `visible_controls` first (see safe_text.py).
         table.add_row(
             f"[{style}]{finding.severity.value}[/{style}]",
-            escape(finding.rule_id),
-            escape(finding.application or "-"),
-            escape(location),
-            escape(finding.message),
+            escape(visible_controls(finding.rule_id)),
+            escape(visible_controls(finding.application or "-")),
+            escape(visible_controls(location)),
+            escape(visible_controls(finding.message)),
         )
     console.print(table)

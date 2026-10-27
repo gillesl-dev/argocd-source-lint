@@ -309,6 +309,21 @@ def test_missing_scan_root_directory_is_reported_as_skipped(git_repo):
     assert "manifests/" not in result.stderr
 
 
+def test_scan_root_name_with_control_characters_is_shown_not_emitted(git_repo):
+    repo_root = git_repo(
+        {
+            ".argocd-lint.yaml": 'scan_roots:\n  - "bad\\e[31m"\n',
+            "bootstrap/argocd-apps/demo-app.yaml": DEMO_APP,
+            "manifests/demo-app/deployment.yaml": "kind: Deployment\n",
+        }
+    )
+
+    result = runner.invoke(app, [str(repo_root), "--format", "json"])
+
+    assert "\x1b" not in result.stderr
+    assert "bad\\x1b[31m" in result.stderr
+
+
 def test_json_format_prints_to_stdout(fixture_repo):
     repo_root = fixture_repo("bad_phantom_target")
 

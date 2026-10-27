@@ -185,6 +185,38 @@ def test_table_escapes_rich_markup_in_repo_controlled_fields():
     assert "[green]looks legit[/green]" in output
 
 
+_FINDING_WITH_CONTROLS = Finding(
+    rule_id="phantom-target",
+    severity=Severity.ERROR,
+    application="evil\x1b[31mRED",
+    message="path `nope\x1b[2J` not found\r",
+    file=Path("bootstrap/argocd-apps/evil\x07.yaml"),
+)
+
+
+def test_table_shows_terminal_control_characters_instead_of_emitting_them():
+    """`escape()` only covers rich markup: an ESC byte from the repo went
+    straight to the terminal before this was fixed."""
+    console = Console(file=io.StringIO(), no_color=True, width=300)
+    render_table(console, [_FINDING_WITH_CONTROLS])
+
+    output = console.file.getvalue()
+    assert "\x1b" not in output
+    assert "\x07" not in output
+    assert "\r" not in output
+    assert "evil\\x1b[31mRED" in output
+
+
+def test_junit_stays_valid_xml_with_control_characters_in_findings():
+    """Before this was fixed, one control character made the whole report
+    unparseable."""
+    root = ET.fromstring(junit.render_findings([_FINDING_WITH_CONTROLS]))
+
+    testcase = root.find("testsuite/testcase")
+    assert testcase.get("name") == "path `nope\\x1b[2J` not found\\x0d"
+    assert testcase.get("file") == "bootstrap/argocd-apps/evil\\x07.yaml"
+
+
 def test_junit_marks_error_as_failure_and_warning_as_skipped():
     root = ET.fromstring(junit.render_findings([_FINDING_NO_LINE, _FINDING_WITH_LINE]))
 

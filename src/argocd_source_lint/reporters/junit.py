@@ -3,6 +3,7 @@ from __future__ import annotations
 from xml.etree import ElementTree as ET
 
 from argocd_source_lint.models import Finding, Severity
+from argocd_source_lint.reporters.safe_text import visible_controls
 
 # JUnit has no native "warning"/"info" level, only pass/failure/error/
 # skipped. error and unverifiable are the two severities that actually
@@ -46,12 +47,15 @@ def _testcase(finding: Finding, seen: dict[tuple[str, str], int]) -> ET.Element:
     # visible instead of one silently vanishing from the report.
     key = (finding.rule_id, finding.message)
     seen[key] = seen.get(key, 0) + 1
-    name = finding.message if seen[key] == 1 else f"{finding.message} (#{seen[key]})"
+    # XML 1.0 rejects most control characters, which repo content can
+    # carry (see safe_text.py): one of them made the whole report unparseable.
+    message = visible_controls(finding.message)
+    name = message if seen[key] == 1 else f"{message} (#{seen[key]})"
 
     attrs = {
-        "classname": finding.rule_id,
+        "classname": visible_controls(finding.rule_id),
         "name": name,
-        "file": finding.file.as_posix(),
+        "file": visible_controls(finding.file.as_posix()),
         "time": "0",
     }
     if finding.line is not None:
@@ -59,9 +63,7 @@ def _testcase(finding: Finding, seen: dict[tuple[str, str], int]) -> ET.Element:
 
     testcase = ET.Element("testcase", attrs)
     if finding.severity in _FAILING:
-        ET.SubElement(
-            testcase, "failure", {"message": finding.message, "type": finding.severity.value}
-        )
+        ET.SubElement(testcase, "failure", {"message": message, "type": finding.severity.value})
     else:
         ET.SubElement(testcase, "skipped", {"message": f"{finding.severity.value}: not blocking"})
     return testcase
