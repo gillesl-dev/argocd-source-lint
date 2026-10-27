@@ -13,7 +13,7 @@ It catches cases that are easy to miss because ArgoCD may still report an Applic
 
 `argocd-source-lint` works from the Git checkout already available in CI. It doesn't connect to the Kubernetes cluster and does not require a `kubeconfig` or cluster credentials.
 
-![Table output of argocd-source-lint on a small repository: two errors for an orphan file and a missing path, two warnings for a CNPG cluster without ignoreDifferences, and one error for a file deployed twice to the same place](docs/sample-run.svg)
+![Table output of argocd-source-lint on a small repository: two errors for an orphan file and a missing path, two warnings for a CNPG cluster without ignoreDifferences, and one error for a file deployed twice to the same place](https://raw.githubusercontent.com/gillesl-dev/argocd-source-lint/main/docs/sample-run.svg)
 
 ## Contents
 
