@@ -70,7 +70,9 @@ src/argocd_source_lint/
 4. Add tests:
    - use the shared `tests/fixtures/good_repo` for the compliant case;
    - add `tests/fixtures/bad_my_rule/` for the failing case;
-   - cover edge cases with unit tests.
+   - cover edge cases with unit tests;
+   - add a positive case to `tests/test_mutations.py`, and the rule's documented default severity
+     to `DOCUMENTED_SEVERITIES` there (a test fails until both exist).
 
 5. If possible, run the rule against a real GitOps repository before opening the PR. This is how
    several early coverage gaps were found, including `directory.include`/`exclude` and
@@ -125,3 +127,8 @@ Each rule should have:
 - a compliant case using the shared `good_repo` fixture;
 - a failing `bad_<rule>/` fixture;
 - inline tests with the `git_repo` fixture for edge cases that do not need a dedicated directory.
+
+`tests/test_mutations.py` runs the real CLI on a clean synthetic repository with one defect
+injected per case. When you fix a false positive, add a negative case there, with a comment
+naming the fix, rather than widening an existing case. When you fix a missed detection, add a
+new positive case for that variant.
