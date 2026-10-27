@@ -214,6 +214,47 @@ def test_malformed_policy_exits_2_with_a_clear_error_instead_of_a_traceback(git_
     assert "not a valid ArgoCD version" in result.stdout
 
 
+def test_repo_without_application_warns_instead_of_reporting_no_issues(git_repo):
+    repo_root = git_repo({"manifests/deployment.yaml": "kind: Deployment\n"})
+
+    result = runner.invoke(app, [str(repo_root)])
+
+    assert result.exit_code == 0
+    assert "No ArgoCD Application found" in result.stdout
+    assert "No issues detected" not in result.stdout
+
+
+def test_fail_on_empty_exits_1_when_no_application_is_found(git_repo):
+    repo_root = git_repo({"manifests/deployment.yaml": "kind: Deployment\n"})
+
+    result = runner.invoke(app, [str(repo_root), "--fail-on-empty"])
+
+    assert result.exit_code == 1
+
+
+def test_fail_on_empty_does_not_change_the_exit_code_when_applications_exist(fixture_repo):
+    repo_root = fixture_repo("good_repo")
+
+    result = runner.invoke(app, [str(repo_root), "--fail-on-empty"])
+
+    assert result.exit_code == 0
+    assert "No ArgoCD Application found" not in result.stdout
+
+
+def test_no_application_warning_goes_to_stderr_for_json_and_sarif(git_repo):
+    repo_root = git_repo({"manifests/deployment.yaml": "kind: Deployment\n"})
+
+    json_result = runner.invoke(app, [str(repo_root), "--format", "json"])
+    sarif_result = runner.invoke(app, [str(repo_root), "--format", "sarif", "--fail-on-empty"])
+
+    assert json_result.exit_code == 0
+    assert json.loads(json_result.stdout)["findings"] == []
+    assert "No ArgoCD Application found" in json_result.stderr
+    assert sarif_result.exit_code == 1
+    assert json.loads(sarif_result.stdout)["runs"][0]["results"] == []
+    assert "No ArgoCD Application found" in sarif_result.stderr
+
+
 def test_json_format_prints_to_stdout(fixture_repo):
     repo_root = fixture_repo("bad_phantom_target")
 

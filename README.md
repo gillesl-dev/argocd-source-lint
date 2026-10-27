@@ -261,6 +261,12 @@ You can change that behavior with:
 unverifiable_blocks_ci: false
 ```
 
+When no ArgoCD Application is found, nothing was checked. The command prints a warning instead of "No issues detected" (on stderr for the non-table formats) and still exits `0`. Pass `--fail-on-empty` to exit `1` in that case, for example when a wrong path in CI should not look like a clean run:
+
+```bash
+argocd-source-lint . --fail-on-empty
+```
+
 ## Configuration
 
 Copy [`.argocd-lint.example.yaml`](./.argocd-lint.example.yaml) to `.argocd-lint.yaml` at the root of the repository.

@@ -70,6 +70,12 @@ RULES: list[Rule] = [
 ]
 
 
+NO_APPLICATION_WARNING = (
+    "No ArgoCD Application found, so no Application was checked. Check the path "
+    "being analyzed, or pass --fail-on-empty to make this fail CI."
+)
+
+
 class OutputFormat(str, Enum):
     TABLE = "table"
     JSON = "json"
@@ -105,6 +111,11 @@ def lint(
             "Accept every current finding into the baseline file instead of "
             "reporting them, so only new findings block CI from now on."
         ),
+    ),
+    fail_on_empty: bool = typer.Option(
+        False,
+        "--fail-on-empty",
+        help="Exit with code 1 when no ArgoCD Application is found, instead of 0.",
     ),
 ) -> None:
     """Analyze the repo's ArgoCD Applications and report detected issues."""
@@ -167,7 +178,12 @@ def lint(
         )
 
     _report(format, new_findings, applications, repo_root, output)
+    if not applications and format != OutputFormat.TABLE:
+        # stderr, so a JSON/SARIF/... report on stdout stays parseable.
+        err_console.print(f"[yellow]{NO_APPLICATION_WARNING}[/yellow]")
 
+    if fail_on_empty and not applications:
+        raise typer.Exit(code=1)
     raise typer.Exit(code=_exit_code(new_findings, policy))
 
 
@@ -206,13 +222,25 @@ def _report_table(
     count = len(applications)
     if output is None:
         console.print(f"[bold]{count}[/bold] ArgoCD Application(s) discovered under {repo_root}\n")
-        render_table(console, findings)
+        _render_table_body(console, findings, applications)
         return
 
     with output.open("w", encoding="utf-8") as f:
         file_console = Console(file=f, no_color=True, width=120)
         file_console.print(f"{count} ArgoCD Application(s) discovered under {repo_root}\n")
-        render_table(file_console, findings)
+        _render_table_body(file_console, findings, applications)
+
+
+def _render_table_body(
+    target: Console, findings: list[Finding], applications: list[Application]
+) -> None:
+    if not applications:
+        # "No issues detected" here would read as a clean result when
+        # nothing was checked at all.
+        target.print(f"[yellow]{NO_APPLICATION_WARNING}[/yellow]")
+        if not findings:
+            return
+    render_table(target, findings)
 
 
 def _exit_code(findings: list[Finding], policy: Policy) -> int:

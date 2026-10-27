@@ -5,6 +5,17 @@ All notable changes to this project are documented in this file, following
 
 ## [Unreleased]
 
+### Added
+
+- Added `--fail-on-empty`, which exits with code 1 when no ArgoCD Application is found.
+  Without it, the exit code is unchanged (`0`).
+
+### Changed
+
+- When no ArgoCD Application is found, the table output now prints a warning instead of
+  "No issues detected", since nothing was checked. The other formats keep the same report
+  on stdout and print the warning on stderr.
+
 ### Fixed
 
 - `double-coverage` no longer flags the same file deployed to different clusters or
