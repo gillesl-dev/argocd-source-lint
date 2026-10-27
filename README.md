@@ -66,49 +66,49 @@ For sync waves, the annotation value has to be an integer. An invalid value fall
 
 `floating-target-revision` catches a `targetRevision` such as `1.2.*` or `>=1.2.0 <1.3.0`. ArgoCD resolves that kind of range against the highest matching chart version or Git tag at every sync, so the deployed content can change with no corresponding commit in this repository.
 
-Sample run using the default table output, captured from a real repo with a phantom
-target, an orphan file, a file covered by two Applications, and a CNPG cluster
-missing its `ignoreDifferences`:
+Sample run using the default table output, on a small repository with a phantom
+target, an orphan file, a file deployed twice to the same namespace by two Applications,
+and a CNPG cluster missing its `ignoreDifferences`:
 
 ```text
 $ argocd-source-lint /home/user/gitops-repo
 
 4 ArgoCD Application(s) discovered under /home/user/gitops-repo
 
-┌──────────┬─────────────────────┬──────────────────┬────────────────────────────────┬─────────────────────────────────┐
-│ Severity │ Rule                │ Application      │ File                            │ Message                         │
-├──────────┼─────────────────────┼──────────────────┼────────────────────────────────┼─────────────────────────────────┤
-│ error    │ orphan-source       │ -                │ manifests/legacy/old-ingress.… │ File not covered by any         │
-│          │                     │                  │                                │ Application source:             │
-│          │                     │                  │                                │ manifests/legacy/old-ingress.y… │
-│ error    │ phantom-target      │ payments-service │ bootstrap/argocd-apps/payment… │ path `apps/does-not-exist` not  │
-│          │                     │                  │                                │ found at revision `HEAD` —      │
-│          │                     │                  │                                │ phantom target.                 │
-│ warning  │ missing-ignore-diff │ postgres-cluster │ bootstrap/argocd-apps/postgre… │ selfHeal active and             │
-│          │                     │                  │                                │ `postgresql.cnpg.io/Cluster`    │
-│          │                     │                  │                                │ `postgres-cluster` detected,    │
-│          │                     │                  │                                │ but no `ignoreDifferences`      │
-│          │                     │                  │                                │ covers `Secret`                 │
-│          │                     │                  │                                │ `postgres-cluster-app` — ArgoCD │
-│          │                     │                  │                                │ risks resetting this            │
-│          │                     │                  │                                │ out-of-Git-managed field on     │
-│          │                     │                  │                                │ every sync.                     │
-│ warning  │ missing-ignore-diff │ postgres-cluster │ bootstrap/argocd-apps/postgre… │ selfHeal active and             │
-│          │                     │                  │                                │ `postgresql.cnpg.io/Cluster`    │
-│          │                     │                  │                                │ `postgres-cluster` detected,    │
-│          │                     │                  │                                │ but no `ignoreDifferences`      │
-│          │                     │                  │                                │ covers `Secret`                 │
-│          │                     │                  │                                │ `postgres-cluster-ca` — ArgoCD  │
-│          │                     │                  │                                │ risks resetting this            │
-│          │                     │                  │                                │ out-of-Git-managed field on     │
-│          │                     │                  │                                │ every sync.                     │
-│ error    │ double-coverage     │ -                │ manifests/shared/configmap.ya… │ File covered by 2 different     │
-│          │                     │                  │                                │ Applications: team-a, team-b —  │
-│          │                     │                  │                                │ ArgoCD would sync it from       │
-│          │                     │                  │                                │ independent loops, risking it   │
-│          │                     │                  │                                │ flapping between whichever      │
-│          │                     │                  │                                │ Application last applied it.    │
-└──────────┴─────────────────────┴──────────────────┴────────────────────────────────┴─────────────────────────────────┘
+┌──────────┬─────────────────────┬──────────────────┬────────────────────────────────┬────────────────────────────────┐
+│ Severity │ Rule                │ Application      │ File                           │ Message                        │
+├──────────┼─────────────────────┼──────────────────┼────────────────────────────────┼────────────────────────────────┤
+│ error    │ orphan-source       │ -                │ manifests/legacy/old-ingress.… │ File not covered by any        │
+│          │                     │                  │                                │ Application source:            │
+│          │                     │                  │                                │ manifests/legacy/old-ingress.… │
+│ error    │ phantom-target      │ payments-service │ bootstrap/argocd-apps/payment… │ path `apps/does-not-exist` not │
+│          │                     │                  │                                │ found at revision `HEAD` —     │
+│          │                     │                  │                                │ phantom target.                │
+│ warning  │ missing-ignore-diff │ postgres-cluster │ bootstrap/argocd-apps/postgre… │ selfHeal active and            │
+│          │                     │                  │                                │ `postgresql.cnpg.io/Cluster`   │
+│          │                     │                  │                                │ `postgres-cluster` detected,   │
+│          │                     │                  │                                │ but no `ignoreDifferences`     │
+│          │                     │                  │                                │ covers `Secret`                │
+│          │                     │                  │                                │ `postgres-cluster-app` —       │
+│          │                     │                  │                                │ ArgoCD risks resetting this    │
+│          │                     │                  │                                │ out-of-Git-managed field on    │
+│          │                     │                  │                                │ every sync.                    │
+│ warning  │ missing-ignore-diff │ postgres-cluster │ bootstrap/argocd-apps/postgre… │ selfHeal active and            │
+│          │                     │                  │                                │ `postgresql.cnpg.io/Cluster`   │
+│          │                     │                  │                                │ `postgres-cluster` detected,   │
+│          │                     │                  │                                │ but no `ignoreDifferences`     │
+│          │                     │                  │                                │ covers `Secret`                │
+│          │                     │                  │                                │ `postgres-cluster-ca` — ArgoCD │
+│          │                     │                  │                                │ risks resetting this           │
+│          │                     │                  │                                │ out-of-Git-managed field on    │
+│          │                     │                  │                                │ every sync.                    │
+│ error    │ double-coverage     │ -                │ manifests/shared/configmap.ya… │ File covered by 2 different    │
+│          │                     │                  │                                │ Applications: team-a, team-b — │
+│          │                     │                  │                                │ ArgoCD would sync it from      │
+│          │                     │                  │                                │ independent loops, risking it  │
+│          │                     │                  │                                │ flapping between whichever     │
+│          │                     │                  │                                │ Application last applied it.   │
+└──────────┴─────────────────────┴──────────────────┴────────────────────────────────┴────────────────────────────────┘
 ```
 
 Three errors and two warnings here, so the process exits with code 1 (see
