@@ -3,6 +3,17 @@
 All notable changes to this project are documented in this file, following
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.3.1] - 2026-10-27
+
+### Fixed
+
+- The GitHub Action and the GitLab component installed the latest release from PyPI, whatever
+  tag they were used at. Each tag now installs its own release (`@v1.3.1` runs 1.3.1), and a
+  new release reaches a pipeline only when its tag is moved. Tags up to `v1.3.0` keep the old
+  behavior. The Python package itself is unchanged.
+- A test now fails when the Action, the GitLab component or the README's CI examples name a
+  version other than the one being released.
+
 ## [1.3.0] - 2026-10-27
 
 ### Added

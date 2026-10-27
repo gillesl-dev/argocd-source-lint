@@ -128,7 +128,22 @@ Each rule should have:
 - a failing `bad_<rule>/` fixture;
 - inline tests with the `git_repo` fixture for edge cases that do not need a dedicated directory.
 
+`tests/test_release_versions.py` fails until `action.yml`, `templates/lint.yml` and the README's
+CI examples all name the version in `pyproject.toml`.
+
 `tests/test_mutations.py` runs the real CLI on a clean synthetic repository with one defect
 injected per case. When you fix a false positive, add a negative case there, with a comment
 naming the fix, rather than widening an existing case. When you fix a missed detection, add a
 new positive case for that variant.
+
+## Releasing
+
+1. Bump `version` in `pyproject.toml`, run `uv lock`, and update the same version in
+   `action.yml`, `templates/lint.yml` and the README's CI examples
+   (`tests/test_release_versions.py` fails until they all match). Date the CHANGELOG section.
+2. Build with `uv build` and check with `uvx twine check dist/*`.
+3. Publish to PyPI before pushing the tag: the Action and the GitLab component at that tag
+   install exactly that version, so a tag pushed first points at a release that doesn't exist
+   yet.
+4. Push the annotated tag, then create the GitHub Release from it. A pushed tag does not become
+   a Release by itself.

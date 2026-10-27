@@ -391,12 +391,16 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: gillesl-dev/argocd-source-lint@v1.3.0
+      - uses: gillesl-dev/argocd-source-lint@v1.3.1
         with:
           path: .
 ```
 
 `actions: read` and `contents: read` are needed for private repositories.
+
+Each tag installs its own release of the tool, so `@v1.3.1` always runs 1.3.1. A new release
+reaches your CI only when you move the tag, which is also true of the GitLab component below.
+Tags up to `v1.3.0` installed the latest release from PyPI instead.
 
 ### GitLab CI
 
@@ -410,7 +414,7 @@ Then include the component using a tag, branch, or commit SHA:
 
 ```yaml
 include:
-  - component: $CI_SERVER_FQDN/<your-gitlab-group>/argocd-source-lint/lint@v1.3.0
+  - component: $CI_SERVER_FQDN/<your-gitlab-group>/argocd-source-lint/lint@v1.3.1
     inputs:
       scope: manifests/
 ```
@@ -422,7 +426,7 @@ You don't have to publish the component in the GitLab CI/CD Catalog. A normal `i
 ```yaml
 repos:
   - repo: https://github.com/gillesl-dev/argocd-source-lint
-    rev: v1.3.0
+    rev: v1.3.1
     hooks:
       - id: argocd-source-lint
 ```

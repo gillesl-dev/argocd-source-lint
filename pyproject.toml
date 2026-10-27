@@ -1,6 +1,6 @@
 [project]
 name = "argocd-source-lint"
-version = "1.3.0"
+version = "1.3.1"
 description = "Static linter to detect silent failures in multi-source ArgoCD Applications"
 readme = "README.md"
 requires-python = ">=3.11"
