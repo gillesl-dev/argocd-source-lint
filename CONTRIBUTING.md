@@ -15,8 +15,8 @@ default.
 
 On 2026-10-27 the commit history was rewritten once to make AI attribution consistent. Tags
 `v1.2.1` and `v1.2.2` now point to new commits with identical content. If you cloned before
-that date, run `git fetch --tags --force && git pull --rebase`; a plain `git pull` would merge
-the old commits back in. Published PyPI releases are unaffected.
+that date, run `git fetch --tags --force && git pull --rebase`. A plain `git pull` tries to
+merge the old commits back in and stops on a conflict. Published PyPI releases are unaffected.
 
 ## Setup
 
