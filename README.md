@@ -75,40 +75,40 @@ $ argocd-source-lint /home/user/gitops-repo
 
 4 ArgoCD Application(s) discovered under /home/user/gitops-repo
 
-┌──────────┬─────────────────────┬──────────────────┬────────────────────────────────┬────────────────────────────────┐
-│ Severity │ Rule                │ Application      │ File                           │ Message                        │
-├──────────┼─────────────────────┼──────────────────┼────────────────────────────────┼────────────────────────────────┤
-│ error    │ orphan-source       │ -                │ manifests/legacy/old-ingress.… │ File not covered by any        │
-│          │                     │                  │                                │ Application source:            │
-│          │                     │                  │                                │ manifests/legacy/old-ingress.… │
-│ error    │ phantom-target      │ payments-service │ bootstrap/argocd-apps/payment… │ path `apps/does-not-exist` not │
-│          │                     │                  │                                │ found at revision `HEAD` —     │
-│          │                     │                  │                                │ phantom target.                │
-│ warning  │ missing-ignore-diff │ postgres-cluster │ bootstrap/argocd-apps/postgre… │ selfHeal active and            │
-│          │                     │                  │                                │ `postgresql.cnpg.io/Cluster`   │
-│          │                     │                  │                                │ `postgres-cluster` detected,   │
-│          │                     │                  │                                │ but no `ignoreDifferences`     │
-│          │                     │                  │                                │ covers `Secret`                │
-│          │                     │                  │                                │ `postgres-cluster-app` —       │
-│          │                     │                  │                                │ ArgoCD risks resetting this    │
-│          │                     │                  │                                │ out-of-Git-managed field on    │
-│          │                     │                  │                                │ every sync.                    │
-│ warning  │ missing-ignore-diff │ postgres-cluster │ bootstrap/argocd-apps/postgre… │ selfHeal active and            │
-│          │                     │                  │                                │ `postgresql.cnpg.io/Cluster`   │
-│          │                     │                  │                                │ `postgres-cluster` detected,   │
-│          │                     │                  │                                │ but no `ignoreDifferences`     │
-│          │                     │                  │                                │ covers `Secret`                │
-│          │                     │                  │                                │ `postgres-cluster-ca` — ArgoCD │
-│          │                     │                  │                                │ risks resetting this           │
-│          │                     │                  │                                │ out-of-Git-managed field on    │
-│          │                     │                  │                                │ every sync.                    │
-│ error    │ double-coverage     │ -                │ manifests/shared/configmap.ya… │ File covered by 2 different    │
-│          │                     │                  │                                │ Applications: team-a, team-b — │
-│          │                     │                  │                                │ ArgoCD would sync it from      │
-│          │                     │                  │                                │ independent loops, risking it  │
-│          │                     │                  │                                │ flapping between whichever     │
-│          │                     │                  │                                │ Application last applied it.   │
-└──────────┴─────────────────────┴──────────────────┴────────────────────────────────┴────────────────────────────────┘
+┏━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+┃ Severity ┃ Rule                ┃ Application      ┃ File                           ┃ Message                         ┃
+┡━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┩
+│ error    │ orphan-source       │ -                │ manifests/legacy/old-ingress.… │ File not covered by any         │
+│          │                     │                  │                                │ Application source:             │
+│          │                     │                  │                                │ manifests/legacy/old-ingress.y… │
+│ error    │ phantom-target      │ payments-service │ bootstrap/argocd-apps/payment… │ path `apps/does-not-exist` not  │
+│          │                     │                  │                                │ found at revision `HEAD` —      │
+│          │                     │                  │                                │ phantom target.                 │
+│ warning  │ missing-ignore-diff │ postgres-cluster │ bootstrap/argocd-apps/postgre… │ selfHeal active and             │
+│          │                     │                  │                                │ `postgresql.cnpg.io/Cluster`    │
+│          │                     │                  │                                │ `postgres-cluster` detected,    │
+│          │                     │                  │                                │ but no `ignoreDifferences`      │
+│          │                     │                  │                                │ covers `Secret`                 │
+│          │                     │                  │                                │ `postgres-cluster-app` — ArgoCD │
+│          │                     │                  │                                │ risks resetting this            │
+│          │                     │                  │                                │ out-of-Git-managed field on     │
+│          │                     │                  │                                │ every sync.                     │
+│ warning  │ missing-ignore-diff │ postgres-cluster │ bootstrap/argocd-apps/postgre… │ selfHeal active and             │
+│          │                     │                  │                                │ `postgresql.cnpg.io/Cluster`    │
+│          │                     │                  │                                │ `postgres-cluster` detected,    │
+│          │                     │                  │                                │ but no `ignoreDifferences`      │
+│          │                     │                  │                                │ covers `Secret`                 │
+│          │                     │                  │                                │ `postgres-cluster-ca` — ArgoCD  │
+│          │                     │                  │                                │ risks resetting this            │
+│          │                     │                  │                                │ out-of-Git-managed field on     │
+│          │                     │                  │                                │ every sync.                     │
+│ error    │ double-coverage     │ -                │ manifests/shared/configmap.ya… │ File covered by 2 different     │
+│          │                     │                  │                                │ Applications: team-a, team-b —  │
+│          │                     │                  │                                │ ArgoCD would sync it from       │
+│          │                     │                  │                                │ independent loops, risking it   │
+│          │                     │                  │                                │ flapping between whichever      │
+│          │                     │                  │                                │ Application last applied it.    │
+└──────────┴─────────────────────┴──────────────────┴────────────────────────────────┴─────────────────────────────────┘
 ```
 
 Three errors and two warnings here, so the process exits with code 1 (see
