@@ -6,11 +6,14 @@
 [![Ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)](https://github.com/astral-sh/ruff)
 [![Status: Stable](https://img.shields.io/badge/status-stable-brightgreen)](#)
 
-Static linter for detecting silent failures in multi-source ArgoCD `Application` resources.
+Static linter for detecting silent failures in ArgoCD `Application` resources, from the Git
+checkout alone.
 
 It catches cases that are easy to miss because ArgoCD may still report an Application as healthy and synced: manifests that are never referenced, broken `$values` references, missing `ignoreDifferences`, invalid targets, conflicting Applications, and similar configuration issues.
 
 `argocd-source-lint` works from the Git checkout already available in CI. It doesn't connect to the Kubernetes cluster and does not require a `kubeconfig` or cluster credentials.
+
+![Table output of argocd-source-lint on a small repository: two errors for an orphan file and a missing path, two warnings for a CNPG cluster without ignoreDifferences, and one error for a file deployed twice to the same place](docs/sample-run.svg)
 
 ## Contents
 
@@ -125,9 +128,9 @@ on a real checkout.
 
 ## Compared to other tools
 
-Of the ArgoCD-adjacent tools found while researching this, none check for orphan sources,
-missing `ignoreDifferences`, phantom targets, or double coverage. They solve a different,
-complementary problem:
+Of the ArgoCD-adjacent tools found while researching this, going by their current
+documentation, none documents a rule for orphan sources, missing `ignoreDifferences`, phantom
+targets, or double coverage. They solve a different, complementary problem:
 
 | | Needs a cluster or a running ArgoCD | Primary purpose |
 | --- | --- | --- |
