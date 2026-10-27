@@ -2,10 +2,14 @@ from __future__ import annotations
 
 import importlib
 import json
+import os
 import pkgutil
+import subprocess
+import sys
 from unittest.mock import patch
 from xml.etree import ElementTree as ET
 
+import pytest
 from typer.testing import CliRunner
 
 from argocd_source_lint import applicationset
@@ -322,6 +326,24 @@ def test_scan_root_name_with_control_characters_is_shown_not_emitted(git_repo):
 
     assert "\x1b" not in result.stderr
     assert "bad\\x1b[31m" in result.stderr
+
+
+@pytest.mark.parametrize("output_format", ["json", "sarif", "junit", "gitlab-codequality"])
+def test_stdout_report_is_utf8_even_when_stdout_encoding_is_cp1252(fixture_repo, output_format):
+    """A redirected stdout on Windows defaults to cp1252; forced here so the
+    Linux CI sees the same thing. The phantom-target message holds a `—`."""
+    repo_root = fixture_repo("bad_phantom_target")
+
+    result = subprocess.run(
+        [sys.executable, "-m", "argocd_source_lint.cli", str(repo_root), "-f", output_format],
+        capture_output=True,
+        env={**os.environ, "PYTHONIOENCODING": "cp1252"},
+        check=False,
+    )
+
+    assert result.returncode == 1
+    assert "—".encode() in result.stdout
+    result.stdout.decode("utf-8")  # raises on a stray cp1252 byte
 
 
 def test_json_format_prints_to_stdout(fixture_repo):

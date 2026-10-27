@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import sys
 from enum import Enum
 from pathlib import Path
 
@@ -241,9 +242,22 @@ def _report(
         text = gitlab_codequality.render_findings(findings)
 
     if output is None:
-        print(text)
+        _write_utf8_to_stdout(text)
     else:
         output.write_text(text, encoding="utf-8")
+
+
+def _write_utf8_to_stdout(text: str) -> None:
+    """`print()` encodes with stdout's own encoding, cp1252 for a redirected
+    stdout on Windows, while JUnit declares UTF-8 and JSON/SARIF consumers
+    expect it: a `—` came out as the single byte 0x97."""
+    buffer = getattr(sys.stdout, "buffer", None)
+    if buffer is None:
+        print(text)
+        return
+    sys.stdout.flush()
+    buffer.write((text + "\n").encode("utf-8"))
+    buffer.flush()
 
 
 def _report_table(

@@ -30,6 +30,10 @@ All notable changes to this project are documented in this file, following
 
 ### Fixed
 
+- On Windows, JSON, SARIF, JUnit and GitLab reports written to stdout came out in the
+  console code page (cp1252) instead of UTF-8, so a `—` in a message became an invalid
+  byte for any UTF-8 reader. They are now always written as UTF-8, as `--output` already
+  did.
 - `double-coverage` no longer flags the same file deployed to different clusters or
   namespaces, the usual ApplicationSet fan-out. It now compares each resource's actual
   target: the destination cluster, and the resource's own `metadata.namespace` or else the
