@@ -6,6 +6,7 @@ from pathlib import Path
 import typer
 from pydantic import ValidationError
 from rich.console import Console
+from rich.markup import escape
 
 from argocd_source_lint import applicationset, tool_version
 from argocd_source_lint.baseline import (
@@ -73,6 +74,10 @@ RULES: list[Rule] = [
 NO_APPLICATION_WARNING = (
     "No ArgoCD Application found, so no Application was checked. Check the path "
     "being analyzed, or pass --fail-on-empty to make this fail CI."
+)
+ORPHAN_SOURCE_SKIPPED_NOTICE = (
+    "orphan-source skipped: scan_roots is not set in .argocd-lint.yaml, so no "
+    "file was checked for missing Application coverage."
 )
 
 
@@ -177,14 +182,35 @@ def lint(
             "finding — re-run --write-baseline to drop them[/yellow]"
         )
 
-    _report(format, new_findings, applications, repo_root, output)
-    if not applications and format != OutputFormat.TABLE:
+    notices = _skipped_check_notices(applications, repo_root, policy)
+    _report(format, new_findings, applications, repo_root, output, notices)
+    if format != OutputFormat.TABLE:
         # stderr, so a JSON/SARIF/... report on stdout stays parseable.
-        err_console.print(f"[yellow]{NO_APPLICATION_WARNING}[/yellow]")
+        for notice in notices:
+            err_console.print(f"[yellow]{notice}[/yellow]")
 
     if fail_on_empty and not applications:
         raise typer.Exit(code=1)
     raise typer.Exit(code=_exit_code(new_findings, policy))
+
+
+def _skipped_check_notices(
+    applications: list[Application], repo_root: Path, policy: Policy
+) -> list[str]:
+    """Checks that silently did nothing, so a quiet report isn't mistaken
+    for a clean one. Already markup-escaped."""
+    notices = []
+    if not applications:
+        notices.append(NO_APPLICATION_WARNING)
+    if not policy.scan_roots:
+        notices.append(ORPHAN_SOURCE_SKIPPED_NOTICE)
+    for scan_root in policy.scan_roots:
+        if not (repo_root / scan_root).resolve().is_dir():
+            notices.append(
+                f"scan_roots entry `{escape(scan_root)}` is not a directory in this "
+                "repository, so orphan-source skipped it."
+            )
+    return notices
 
 
 def _report(
@@ -193,9 +219,10 @@ def _report(
     applications: list[Application],
     repo_root: Path,
     output: Path | None,
+    notices: list[str],
 ) -> None:
     if output_format == OutputFormat.TABLE:
-        _report_table(findings, applications, repo_root, output)
+        _report_table(findings, applications, repo_root, output, notices)
         return
 
     if output_format == OutputFormat.JSON:
@@ -218,29 +245,34 @@ def _report_table(
     applications: list[Application],
     repo_root: Path,
     output: Path | None,
+    notices: list[str],
 ) -> None:
     count = len(applications)
     if output is None:
         console.print(f"[bold]{count}[/bold] ArgoCD Application(s) discovered under {repo_root}\n")
-        _render_table_body(console, findings, applications)
+        _render_table_body(console, findings, applications, notices)
         return
 
     with output.open("w", encoding="utf-8") as f:
         file_console = Console(file=f, no_color=True, width=120)
         file_console.print(f"{count} ArgoCD Application(s) discovered under {repo_root}\n")
-        _render_table_body(file_console, findings, applications)
+        _render_table_body(file_console, findings, applications, notices)
 
 
 def _render_table_body(
-    target: Console, findings: list[Finding], applications: list[Application]
+    target: Console,
+    findings: list[Finding],
+    applications: list[Application],
+    notices: list[str],
 ) -> None:
-    if not applications:
-        # "No issues detected" here would read as a clean result when
-        # nothing was checked at all.
-        target.print(f"[yellow]{NO_APPLICATION_WARNING}[/yellow]")
-        if not findings:
-            return
-    render_table(target, findings)
+    for notice in notices:
+        target.print(f"[yellow]{notice}[/yellow]")
+    if notices:
+        target.print()
+    # "No issues detected" with no Application would read as a clean
+    # result when nothing was checked at all.
+    if applications or findings:
+        render_table(target, findings)
 
 
 def _exit_code(findings: list[Finding], policy: Policy) -> int:

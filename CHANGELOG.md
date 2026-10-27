@@ -15,6 +15,10 @@ All notable changes to this project are documented in this file, following
 - When no ArgoCD Application is found, the table output now prints a warning instead of
   "No issues detected", since nothing was checked. The other formats keep the same report
   on stdout and print the warning on stderr.
+- The output now says when `orphan-source` checked nothing because `scan_roots` is not
+  set, and names any `scan_roots` entry that is not a directory in the repository. Both
+  were previously skipped without a word. Same placement as the warning above; no exit
+  code change.
 
 ### Fixed
 

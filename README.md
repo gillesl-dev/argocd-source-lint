@@ -273,6 +273,8 @@ Copy [`.argocd-lint.example.yaml`](./.argocd-lint.example.yaml) to `.argocd-lint
 
 Any setting you leave out keeps its default value.
 
+`scan_roots` lists the folders where every YAML file should belong to an Application. It has no default, because only you know which folders hold deployable manifests. Without it, `orphan-source` checks nothing, and the output says so. An entry that is not a directory in the repository is reported the same way.
+
 ```yaml
 scan_roots:
   - manifests/

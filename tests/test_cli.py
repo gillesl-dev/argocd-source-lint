@@ -255,6 +255,60 @@ def test_no_application_warning_goes_to_stderr_for_json_and_sarif(git_repo):
     assert "No ArgoCD Application found" in sarif_result.stderr
 
 
+DEMO_APP = """\
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: demo-app
+spec:
+  source:
+    repoURL: https://example.invalid/repo.git
+    targetRevision: HEAD
+    path: manifests/demo-app
+"""
+
+
+def test_unset_scan_roots_says_orphan_source_was_skipped(git_repo):
+    repo_root = git_repo(
+        {
+            "bootstrap/argocd-apps/demo-app.yaml": DEMO_APP,
+            "manifests/demo-app/deployment.yaml": "kind: Deployment\n",
+        }
+    )
+
+    result = runner.invoke(app, [str(repo_root)])
+
+    assert result.exit_code == 0
+    assert "orphan-source skipped" in result.stdout
+    assert "No issues detected" in result.stdout
+
+
+def test_configured_scan_roots_has_no_skipped_notice(fixture_repo):
+    repo_root = fixture_repo("good_repo")
+
+    result = runner.invoke(app, [str(repo_root)])
+
+    assert result.exit_code == 0
+    assert "skipped" not in result.stdout
+
+
+def test_missing_scan_root_directory_is_reported_as_skipped(git_repo):
+    repo_root = git_repo(
+        {
+            ".argocd-lint.yaml": "scan_roots:\n  - manifests/\n  - infra/\n",
+            "bootstrap/argocd-apps/demo-app.yaml": DEMO_APP,
+            "manifests/demo-app/deployment.yaml": "kind: Deployment\n",
+        }
+    )
+
+    result = runner.invoke(app, [str(repo_root), "--format", "json"])
+
+    assert result.exit_code == 0
+    assert json.loads(result.stdout)["findings"] == []
+    assert "`infra/` is not a directory" in result.stderr
+    assert "manifests/" not in result.stderr
+
+
 def test_json_format_prints_to_stdout(fixture_repo):
     repo_root = fixture_repo("bad_phantom_target")
 
