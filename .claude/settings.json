@@ -1,6 +1,7 @@
 {
   "attribution": {
     "commit": "Assisted-by: Claude Code",
-    "pr": ""
+    "pr": "",
+    "sessionUrl": false
   }
 }

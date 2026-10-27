@@ -2,12 +2,13 @@
 # commit-msg : normalise l'attribution IA en un seul trailer "Assisted-by: Claude Code".
 #
 # Sans effet sur les commits qui ne mentionnent pas Claude Code.
-# Sinon : retire "Co-Authored-By: ... <...@anthropic.com>", la ligne
-# "Generated with [Claude Code]" et les doublons, puis ajoute le trailer une
-# seule fois, dans le bloc de trailers existant (Signed-off-by, etc.) ou dans
-# un nouveau bloc. Le filtre matche sur le domaine anthropic.com plutôt que
-# sur le prénom "Claude", pour ne jamais effacer un vrai co-auteur humain qui
-# porterait ce prénom.
+# Sinon : retire "Co-Authored-By: ... <noreply@anthropic.com>", "Generated with
+# [Claude Code]" (avec ou sans crochets), "Claude-Session: <url>" et les
+# doublons, puis ajoute le trailer une seule fois, dans le bloc de trailers
+# existant (Signed-off-by, etc.) ou dans un nouveau bloc. Le filtre matche sur
+# l'adresse exacte noreply@anthropic.com, jamais sur le prénom "Claude" ni sur
+# le domaine anthropic.com en général, pour ne jamais effacer un vrai
+# co-auteur humain, y compris un employé Anthropic.
 #
 # Activation (une fois par clone) : git config core.hooksPath .githooks
 
@@ -16,13 +17,15 @@ set -euo pipefail
 msg_file="$1"
 trailer="Assisted-by: Claude Code"
 
-co_author='^Co-Authored-By:.*<[^>]*@anthropic\.com>'
+co_author='^Co-Authored-By:[[:space:]]*[^<]*<noreply@anthropic\.com[[:space:]]*>[[:space:]]*$'
 assisted='^Assisted-by:[[:space:]]*Claude Code[[:space:]]*$'
-generated='Generated with \[Claude Code\]'
+generated='Generated with (\[Claude Code\]|Claude Code)'
+session='^Claude-Session:'
 
 if ! grep -qiE "$co_author" "$msg_file" \
    && ! grep -qE "$assisted" "$msg_file" \
-   && ! grep -qE "$generated" "$msg_file"; then
+   && ! grep -qE "$generated" "$msg_file" \
+   && ! grep -qE "$session" "$msg_file"; then
   exit 0
 fi
 
@@ -32,7 +35,8 @@ trap 'rm -f "$tmp"' EXIT
 # grep -v renvoie 1 si tout est filtré : on l'accepte.
 { grep -viE "$co_author" "$msg_file" || true; } \
   | { grep -vE "$assisted" || true; } \
-  | { grep -vE "$generated" || true; } > "$tmp"
+  | { grep -vE "$generated" || true; } \
+  | { grep -vE "$session" || true; } > "$tmp"
 
 # Retire les lignes vides de fin.
 sed -i -e :a -e '/^[[:space:]]*$/{$d;N;ba' -e '}' "$tmp"
