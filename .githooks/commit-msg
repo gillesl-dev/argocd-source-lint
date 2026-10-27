@@ -19,7 +19,7 @@ trailer="Assisted-by: Claude Code"
 
 co_author='^Co-Authored-By:[[:space:]]*[^<]*<noreply@anthropic\.com[[:space:]]*>[[:space:]]*$'
 assisted='^Assisted-by:[[:space:]]*Claude Code[[:space:]]*$'
-generated='Generated with (\[Claude Code\]|Claude Code)'
+generated='^(🤖 )?Generated with (\[Claude Code\]|Claude Code)'
 session='^Claude-Session:'
 
 if ! grep -qiE "$co_author" "$msg_file" \
