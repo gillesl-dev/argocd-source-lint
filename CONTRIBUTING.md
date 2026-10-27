@@ -5,9 +5,8 @@ non-obvious implementation decisions.
 
 ## AI assistance
 
-Parts of the code and documentation were written with an AI assistant (Claude Code). Recent
-commits carry an `Assisted-by` trailer, and earlier ones a `Co-Authored-By` line. All changes
-are reviewed and merged by the maintainer.
+Parts of the code and documentation were written with an AI assistant (Claude Code). Commits
+carry an `Assisted-by` trailer. All changes are reviewed and merged by the maintainer.
 
 ## Setup
 
