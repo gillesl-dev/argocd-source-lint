@@ -68,10 +68,6 @@ spec:
 
 
 def test_mixed_local_and_external_sources_still_checks_the_local_source(git_repo):
-    """A local source of a mixed `spec.sources` Application must not be
-    skipped just because another source of the same Application is
-    external (otherwise a broken path would go unnoticed, a false
-    negative)."""
     repo_root = git_repo(
         {
             "bootstrap/argocd-apps/mixed-app.yaml": """\
@@ -100,7 +96,7 @@ spec:
     assert "manifests/does-not-exist" in error_finding.message
 
 
-def test_unresolvable_revision_is_unverifiable_not_silently_skipped(git_repo):
+def test_unresolvable_revision_is_unverifiable_not_skipped(git_repo):
     repo_root = git_repo(
         {
             "bootstrap/argocd-apps/demo-app.yaml": """\
@@ -128,9 +124,8 @@ spec:
 
 
 def test_path_present_on_current_branch_but_absent_on_declared_revision(git_repo):
-    """Justifies `git ls-tree <targetRevision>` over a plain filesystem
-    access: the path exists on the current branch, not on the revision
-    actually declared by the Application."""
+    """Paths are checked with `git ls-tree <targetRevision>`, not the working
+    tree: here the path exists on the current branch only."""
     repo_root = git_repo(
         {
             "bootstrap/argocd-apps/demo-app.yaml": """\
@@ -154,7 +149,7 @@ spec:
     _run_git("add", "-A", cwd=repo_root)
     _run_git("commit", "-q", "-m", "add demo-app manifests", cwd=repo_root)
 
-    # Sur la branche courante (main/master), le path existe bel et bien.
+    # On the current branch (main/master), the path does exist.
     assert (repo_root / "manifests/demo-app/deployment.yaml").exists()
 
     findings = _run_phantom_target(repo_root)

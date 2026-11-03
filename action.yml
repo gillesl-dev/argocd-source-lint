@@ -1,7 +1,6 @@
 name: 'ArgoCD Source Lint'
 description: >-
-  Catches silent ArgoCD failures: orphan sources, broken values refs,
-  missing ignoreDifferences, phantom targets, and more.
+  Lints ArgoCD Applications for mistakes ArgoCD doesn't report, from the Git checkout alone.
 author: 'gillesl-dev'
 
 branding:
@@ -10,16 +9,39 @@ branding:
 
 inputs:
   path:
-    description: 'Root of the repo to analyze'
+    description: 'Root of the Git repository to analyze, not a subfolder of it'
     required: false
     default: '.'
   fail-on-error:
     description: >-
-      Fail the job if blocking findings (error, or unverifiable depending
-      on the policy) are detected. Set to "false" for a progressive
-      rollout (report only, without breaking the pipeline).
+      Fail the job on a blocking finding (error, or unverifiable depending
+      on the policy). With "false", findings are only reported. A tool
+      error still fails the job.
     required: false
     default: 'true'
+  fail-on-empty:
+    description: >-
+      Fail the job when no ArgoCD Application is found, which usually
+      means a wrong path.
+    required: false
+    default: 'true'
+  upload-sarif:
+    description: >-
+      Upload the SARIF report to GitHub code scanning. Set to "false" where
+      code scanning is not available, such as a private repository without
+      GitHub Code Security.
+    required: false
+    default: 'true'
+  category:
+    description: >-
+      Code scanning category of the SARIF report. Set a distinct value for
+      each use of this Action in one workflow run, such as one per path.
+    required: false
+    default: ''
+  args:
+    description: 'Extra command-line options, for example "--skip orphan-source"'
+    required: false
+    default: ''
   python-version:
     description: 'Python version used to install argocd-source-lint'
     required: false
@@ -34,30 +56,75 @@ runs:
   using: 'composite'
   steps:
     - name: Set up Python
-      uses: actions/setup-python@v5
+      id: python
+      uses: actions/setup-python@v6
       with:
         python-version: ${{ inputs.python-version }}
+        # Leave the job's own `python` on PATH untouched.
+        update-environment: false
 
     - name: Install argocd-source-lint
       shell: bash
+      env:
+        PYTHON: ${{ steps.python.outputs.python-path }}
       # Pinned to this tag's own release, so `@vX.Y.Z` runs exactly X.Y.Z
       # (tests/test_release_versions.py keeps it in sync with pyproject.toml).
-      run: pip install --disable-pip-version-check "argocd-source-lint==1.3.1"
+      run: |
+        # Delete a report left by an earlier run: if the install fails, the
+        # upload step would still find it.
+        rm -f results.sarif
+        "$PYTHON" -m venv "$RUNNER_TEMP/argocd-source-lint"
+        bin="$RUNNER_TEMP/argocd-source-lint/bin"
+        [ -d "$bin" ] || bin="$RUNNER_TEMP/argocd-source-lint/Scripts"  # Windows runners
+        "$bin/python" -m pip install --disable-pip-version-check "argocd-source-lint==1.4.0"
 
     - name: Run argocd-source-lint
       id: lint
       shell: bash
+      # Inputs go through env, never straight into the script.
+      env:
+        INPUT_PATH: ${{ inputs.path }}
+        INPUT_FAIL_ON_ERROR: ${{ inputs.fail-on-error }}
+        INPUT_FAIL_ON_EMPTY: ${{ inputs.fail-on-empty }}
+        INPUT_UPLOAD_SARIF: ${{ inputs.upload-sarif }}
+        INPUT_ARGS: ${{ inputs.args }}
       run: |
-        set +e
-        argocd-source-lint "${{ inputs.path }}" --format sarif --output results.sarif
+        set +e -f
+        # A report left by an earlier run in a reused workspace must not be uploaded.
+        rm -f results.sarif
+        for input in "fail-on-error=$INPUT_FAIL_ON_ERROR" "fail-on-empty=$INPUT_FAIL_ON_EMPTY" \
+          "upload-sarif=$INPUT_UPLOAD_SARIF"; do
+          case "${input#*=}" in
+            true | True | TRUE | false | False | FALSE) ;;
+            *) echo "::error::Input ${input%%=*} must be true or false, not '${input#*=}'"; exit 2 ;;
+          esac
+        done
+        fail_on_error=$(echo "$INPUT_FAIL_ON_ERROR" | tr '[:upper:]' '[:lower:]')
+        fail_on_empty=$(echo "$INPUT_FAIL_ON_EMPTY" | tr '[:upper:]' '[:lower:]')
+        bin="$RUNNER_TEMP/argocd-source-lint/bin"
+        [ -d "$bin" ] || bin="$RUNNER_TEMP/argocd-source-lint/Scripts"
+        options=($INPUT_ARGS)
+        if [ "$fail_on_empty" = "true" ]; then options+=(--fail-on-empty); fi
+        # The table goes to the job log; the SARIF run below decides the exit code.
+        "$bin/argocd-source-lint" "$INPUT_PATH" "${options[@]}"
+        "$bin/argocd-source-lint" "$INPUT_PATH" --format sarif --output results.sarif "${options[@]}"
         exit_code=$?
         echo "sarif-file=results.sarif" >> "$GITHUB_OUTPUT"
-        if [ "${{ inputs.fail-on-error }}" = "true" ]; then
+        # Exit code 2 is a tool error (bad path, missing git, invalid
+        # config), not a finding: it fails the job even in report-only mode.
+        if [ "$exit_code" -eq 2 ] || [ "$fail_on_error" = "true" ]; then
           exit "$exit_code"
         fi
 
     - name: Upload SARIF results
-      if: always()
-      uses: github/codeql-action/upload-sarif@v3
+      # No report means an earlier step failed; uploading would hide that error.
+      if: always() && inputs.upload-sarif == 'true' && hashFiles('results.sarif') != ''
+      # Pull requests from forks and Dependabot get a read-only token, which
+      # can't upload: the findings are still in the job log above.
+      continue-on-error: >-
+        ${{ github.event.pull_request.head.repo.fork == true
+        || github.actor == 'dependabot[bot]' }}
+      uses: github/codeql-action/upload-sarif@v4
       with:
         sarif_file: results.sarif
+        category: ${{ inputs.category }}

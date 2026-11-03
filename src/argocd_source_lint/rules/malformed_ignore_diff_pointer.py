@@ -10,13 +10,12 @@ RULE_ID = "malformed-ignore-diff-pointer"
 
 
 class MalformedIgnoreDiffPointerRule(Rule):
-    """`ignoreDifferences[].jsonPointers` entries follow RFC 6901: each
-    one must start with `/` (`/spec/replicas`, never `spec.replicas` or
-    `spec/replicas`). A pointer that doesn't resolves to nothing, so the
-    rule silently ignores nothing: a well-documented, common authoring
-    mistake (dot notation copied from a different tool's path syntax),
-    not a heuristic judgment call: this is an objective syntax check, no
-    live cluster needed."""
+    """Detect a `jsonPointers` entry that does not start with `/`.
+
+    RFC 6901 requires the leading slash. A pointer such as `spec.replicas`
+    matches nothing, so Argo CD keeps diffing the field it was meant to
+    ignore without reporting an error.
+    """
 
     rule_id = RULE_ID
 

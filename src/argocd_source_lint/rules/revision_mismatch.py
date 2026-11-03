@@ -11,13 +11,12 @@ RULE_ID = "revision-mismatch"
 
 
 class RevisionMismatchRule(Rule):
-    """orphan-source, missing-ignore-diff and double-coverage resolve a
-    local source's files against a snapshot of its own `targetRevision`
-    when that differs from what's checked out (see
-    `git_context.materialize_revision`, DESIGN.md "targetRevision drift"),
-    so their result stays correct either way. This is purely an FYI
-    that a source is pinned away from HEAD, for a human reading the
-    report, not a correctness caveat."""
+    """Report a local source whose `targetRevision` differs from the checkout.
+
+    Informational only: rules that read file contents already resolve such
+    a source against a snapshot of its own revision (DESIGN.md
+    "targetRevision drift"), so their results stay correct.
+    """
 
     rule_id = RULE_ID
 
@@ -38,9 +37,8 @@ class RevisionMismatchRule(Rule):
                 if revision not in checked:
                     checked[revision] = revision_matches_checkout(repo_root, revision)
                 if checked[revision] is not False:
-                    # True: matches HEAD, nothing to report. None: not
-                    # resolvable at all; phantom-target/broken-values-ref
-                    # already flag that shallow-clone case on their own.
+                    # None means unresolvable, which phantom-target and
+                    # broken-values-ref already report.
                     continue
 
                 findings.append(

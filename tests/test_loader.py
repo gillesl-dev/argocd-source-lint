@@ -207,10 +207,8 @@ metadata:
 
 
 def test_ignores_a_manifest_that_is_a_yaml_alias_bomb(git_repo):
-    """A tiny "billion laughs" document (each anchor aliases the
-    previous one twice) must never reach `str(doc.get("apiVersion"))` --
-    confirmed to hang for real before `fsutil.is_within_budget` existed.
-    Treated the same as any other file that fails to parse."""
+    """A "billion laughs" document is treated like any unparseable file and never
+    reaches `str(doc.get("apiVersion"))` on the expanded value, which hangs."""
     layers = 30
     lines = ['a0: &a0 ["x"]']
     for i in range(1, layers):

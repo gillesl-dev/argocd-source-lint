@@ -23,22 +23,15 @@ _RESOURCE_SYNC_OPTIONS_ANNOTATION = "argocd.argoproj.io/sync-options"
 
 
 class UnknownSyncOptionRule(Rule):
-    """A `syncOptions` entry, at the Application level
-    (`spec.syncPolicy.syncOptions`) or per-resource (the
-    `argocd.argoproj.io/sync-options` annotation), is matched by
-    ArgoCD as a literal `Key=Value` string; there's no schema
-    validation on it, so a wrong case (`respectIgnoreDifferences=true`)
-    or a misspelled key (`PruneLatest=true`) is never rejected, just
-    silently a no-op. The key portion is checked against the closed,
-    documented set rather than the value: the exact accepted
-    values/casing per key are less consistently documented, so
-    validating only the key keeps this an objective check instead of a
-    guess (same principle as `malformed-ignore-diff-pointer`).
+    """Detect sync option keys Argo CD does not recognize.
 
-    The closed set itself is also narrowed by the policy's optional
-    `argocd_version`: a key can be a real, correctly-spelled ArgoCD sync
-    option and still be a silent no-op if it wasn't introduced yet on the
-    declared version (see argocd_versions.py)."""
+    Covers `spec.syncPolicy.syncOptions` and the per-resource
+    `argocd.argoproj.io/sync-options` annotation. Argo CD matches entries as
+    literal strings with no validation, so a wrong case or misspelled key is
+    a no-op. Only the key is checked, since accepted values are not
+    consistently documented. The optional `argocd_version` policy narrows
+    the set to keys that exist in that release (see argocd_versions.py).
+    """
 
     rule_id = RULE_ID
 

@@ -194,10 +194,9 @@ metadata:
 
 
 def test_prune_at_application_level_flagged_below_introducing_version(git_repo):
-    """`Prune`/`Delete` only became valid Application-level `syncOptions` keys
-    in ArgoCD 3.4.0; before that they only existed as the per-resource
-    annotation. A repo declaring an older `argocd_version` should still catch
-    this real silent no-op."""
+    """`Prune`/`Delete` became valid Application-level `syncOptions` keys in ArgoCD
+    3.4.0, before which they were only per-resource annotation keys and a no-op
+    here."""
     repo_root = git_repo(
         {
             ".argocd-lint.yaml": "argocd_version: '3.3.0'\n",
@@ -234,8 +233,8 @@ def test_prune_at_application_level_not_flagged_at_or_above_introducing_version(
 
 
 def test_prune_at_application_level_not_flagged_without_declared_version(git_repo):
-    """No `argocd_version` declared keeps today's behavior: every key ArgoCD
-    has ever recognized is accepted, regardless of when it shipped."""
+    """Without `argocd_version`, every key ArgoCD has recognized in any version
+    is accepted."""
     repo_root = git_repo(
         {
             "bootstrap/argocd-apps/web.yaml": _APP_HEADER
@@ -252,9 +251,9 @@ def test_prune_at_application_level_not_flagged_without_declared_version(git_rep
 
 
 def test_resource_level_prune_not_flagged_even_with_old_declared_version(git_repo):
-    """`Prune` has existed as the per-resource annotation since ArgoCD 1.1.0 --
-    long before it became valid at the Application level (3.4.0, see above).
-    An old declared `argocd_version` must not gate the two contexts together."""
+    """`Prune` has been a per-resource annotation key since ArgoCD 1.1.0, long
+    before 3.4.0 made it valid at the Application level: an old declared
+    version must not gate both contexts together."""
     repo_root = git_repo(
         {
             ".argocd-lint.yaml": "argocd_version: '1.2.0'\n",

@@ -3,258 +3,268 @@
 All notable changes to this project are documented in this file, following
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+
+## [1.4.0] - 2026-11-04
+
+### Added
+
+- `repo_urls` setting: other URLs ArgoCD uses for this repository, such as an SSH host alias.
+- `argocd_instances` setting: folders of separate ArgoCD instances, whose Application names
+  and destinations are not compared with each other.
+- `argocd-source-lint/ignore-<rule-id>: "<reason>"` annotation, to accept a finding for one
+  Application or ApplicationSet template.
+- `--list-rules`, `--only`, `--skip` and `--target-branch` options, and `--format github`.
+- `docs/rules.md`, one section per rule, linked from SARIF reports.
+- GitHub Action inputs `upload-sarif`, `category` and `args`.
+- GitLab component inputs `args`, `image` and `job_name`.
+- `new_git_file_globbing` setting, for an ApplicationSet controller started with
+  `--enable-new-git-file-globbing`.
+
+### Changed
+
+- The GitHub Action and the GitLab component fail when no Application is found
+  (`fail-on-empty`, `true` by default).
+- The GitHub Action runs the tool in its own virtual environment, with
+  `actions/setup-python@v6` and `github/codeql-action/upload-sarif@v4`.
+- The GitHub Action's boolean inputs accept `True` and `TRUE`; any other value than true or
+  false exits with code 2.
+- On pull requests from forks and from Dependabot, a failed SARIF upload no longer fails the
+  job.
+- The GitLab component installs `git` only when the image lacks it.
+- `orphan-source` reports as `info` the files an ApplicationSet it can't expand may deploy.
+- `project-scope-violation` matches `sourceRepos` as ArgoCD does: an `https://` pattern no
+  longer allows the `git@` URL of the same repository. A destination entry without
+  `namespace` only allows an empty namespace, as in ArgoCD.
+- The git `files` generator matches its patterns like `git ls-files`, ArgoCD's default, where
+  `*` crosses `/`.
+- Directory sources read `.json` files, and skip files marked `+argocd:skip-file-rendering`,
+  as ArgoCD does.
+- An Application tracking the target branch of a pull request is checked against the change,
+  not against that branch.
+- A branch missing locally is also looked up as `origin/<branch>`.
+- `broken-values-ref` no longer checks remote `https://` values files.
+- The table output is 200 columns wide when not on a terminal, unless `COLUMNS` is set.
+- `--write-baseline` writes a reworded comment at the top of the file. Existing baselines
+  load unchanged.
+- `.githooks/` is removed. If you pointed `core.hooksPath` at it, run
+  `git config --unset core.hooksPath`.
+
+### Fixed
+
+- `fail-on-error: True` in the GitHub Action passed the job on errors.
+- With `fail-on-error: false`, a tool error (exit code 2) passed the GitHub job.
+- The GitLab component failed on findings with `fail_on_error: false` and skipped the table.
+- An invalid `.argocd-lint.yaml` or baseline crashed with exit code 1 instead of 2. This
+  includes a `known_operators` `name_pattern` with a placeholder other than `{name}`, or
+  `{user}` without `name_from_each`.
+- An unknown rule ID or a `rules:` list in `.argocd-lint.yaml` was ignored or crashed.
+- A manifest with a value of the wrong type, or an ApplicationSet template `spec` that is not
+  a mapping, crashed the run.
+- A YAML file with one invalid document was skipped as a whole without a notice.
+- `phantom-target` and `broken-values-ref` ignored staged files in a pre-commit run.
+- `phantom-target`: false finding for a path starting with `./` or with non-ASCII characters.
+- `broken-values-ref`: false finding for globs, `./` and `../` paths, `/` paths, and
+  ArgoCD build variables such as `$ARGOCD_APP_NAME`; `ignoreMissingValueFiles` was ignored
+  for `$ref` entries.
+- `orphan-source`: false finding for values files outside the chart, `plugin` sources, an
+  explicit `directory` over a `kustomization.yaml`, braces inside `directory.include`, and
+  files referenced by Kustomize `replacements`, `transformers`, `generators`, `validators`,
+  `configurations`, `openapi` and `helmCharts`.
+- ApplicationSets: `{{path}}` of the git `files` generator is the directory, as in ArgoCD;
+  `{{path[n]}}`, `{{path.filename}}`, generator-level templates, matrix chaining,
+  `list.elementsYaml` and `exclude` on `files` are supported; `directories` takes precedence
+  over `files`; the `directories` generator no longer enters hidden folders, and `*` and `**`
+  stay within one folder level.
+- `double-coverage`: false finding for files renamed by a Kustomize `namePrefix`,
+  `nameSuffix` or `namespace`.
+- `project-scope-violation`: false finding for a negated destination field after the first
+  one, and for `{a,b}` in a destination.
+- `hpa-selfheal-conflict`: false finding for a workload without `spec.replicas` in Git.
+- `malformed-ignore-diff-jq-expression`: false finding for valid expressions such as
+  `(.a | .b)`, `getpath(...)` or `select(...) | .a`.
+- `floating-target-revision` missed chart ranges such as `1.2.x`, `1.2 - 1.4` and `1.2 || 2.0`,
+  and Git ranges such as `1.0.0 || 2.0.0`; it reported branch names with `=` or `<` in them
+  and the pin `=1.2.3`.
+
 ## [1.3.1] - 2026-10-27
 
 ### Fixed
 
 - The GitHub Action and the GitLab component installed the latest release from PyPI, whatever
-  tag they were used at. Each tag now installs its own release (`@v1.3.1` runs 1.3.1), and a
-  new release reaches a pipeline only when its tag is moved. Tags up to `v1.3.0` keep the old
-  behavior. The Python package itself is unchanged.
-- A test now fails when the Action, the GitLab component or the README's CI examples name a
-  version other than the one being released.
+  tag they were used at. Each tag now installs its own release (`@v1.3.1` runs 1.3.1). The
+  Python package is unchanged.
 
 ## [1.3.0] - 2026-10-27
 
 ### Added
 
-- Added `--fail-on-empty`, which exits with code 1 when no ArgoCD Application is found.
-  Without it, the exit code is unchanged (`0`).
-- Added `--show-info` to list `info` findings in the table output (see below).
+- `--fail-on-empty` exits with code 1 when no ArgoCD Application is found.
+- `--show-info` lists `info` findings in the table output.
 
 ### Changed
 
-- The table output no longer lists `info` findings. It prints one count per rule below the
-  table instead, and counts a source in another repository once rather than once per rule
-  (one external Helm chart used to produce 7 identical rows). `--show-info` restores the
-  full list. JSON, SARIF, JUnit and GitLab reports, baselines and exit codes are unchanged
-  by this change.
-- When no ArgoCD Application is found, the table output now prints a warning instead of
-  "No issues detected", since nothing was checked. The other formats keep the same report
-  on stdout and print the warning on stderr.
-- The output now says when `orphan-source` checked nothing because `scan_roots` is not
-  set, and names any `scan_roots` entry that is not a directory in the repository. Both
-  were previously skipped without a word. Same placement as the warning above; no exit
-  code change.
+- The table output counts `info` findings per rule instead of listing them, and counts a
+  source in another repository once rather than once per rule. Other formats, baselines
+  and exit codes are unchanged.
+- When no Application is found, the table output prints a warning instead of "No issues
+  detected"; other formats print it on stderr.
+- The output says when `orphan-source` checked nothing because `scan_roots` is not set, and
+  names any `scan_roots` entry that is not a directory.
 
 ### Security
 
-- Control characters from the repository (an `\e` in a YAML string, for example) are now
-  shown as `\xNN` instead of being printed raw. In the table output, the warnings and the
-  configuration error messages, an ESC sequence in an Application name, a path or a
-  `scan_roots` entry could restyle or clear the terminal; `rich` markup escaping did not
-  cover it. In JUnit, one such character made the whole report invalid XML.
+- Control characters from the repository are shown as `\xNN` instead of being printed raw,
+  so a name can't restyle or clear the terminal, and a JUnit report stays valid XML.
 
 ### Fixed
 
-- `project-scope-violation` checked an Application against whichever AppProject of that
-  name was read last. With several same-named AppProjects (one per folder in a template
-  repository), Applications were reported against another folder's project. It now reports
-  `info` and skips the check, since the repository alone does not say which one applies.
-- `duplicate-application-name` no longer compares names the Kubernetes API server would
-  refuse (not a DNS subdomain), such as a template's unfilled `<CLUSTER_NAME>-app`. Such an
-  Application can never be created, so two copies of it are not a collision.
-- On Windows, JSON, SARIF, JUnit and GitLab reports written to stdout came out in the
-  console code page (cp1252) instead of UTF-8, so a `—` in a message became an invalid
-  byte for any UTF-8 reader. They are now always written as UTF-8, as `--output` already
-  did.
-- `double-coverage` no longer flags the same file deployed to different clusters or
-  namespaces, the usual ApplicationSet fan-out. It now compares each resource's actual
-  target: the destination cluster, and the resource's own `metadata.namespace` or else the
-  destination namespace, as ArgoCD does. A known cluster-scoped kind (`ClusterRole`,
-  `Namespace`...) is compared by cluster only. An undeterminable target is skipped rather
-  than reported. Known limit: a cluster written as `destination.server` in one Application
-  and as `destination.name` in the other (`in-cluster` included) is not compared, since the
-  name-to-URL mapping depends on live ArgoCD cluster secrets.
-- `duplicate-application-name` placed every ApplicationSet-generated Application in
-  `argocd`. ArgoCD always creates them in the ApplicationSet's own namespace, so
-  ApplicationSets in different namespaces generating the same name were falsely reported.
+- `project-scope-violation` with several AppProjects of the same name checked against the
+  last one read. It now reports `info`.
+- `duplicate-application-name` no longer compares names the Kubernetes API would refuse,
+  such as an unfilled `<CLUSTER_NAME>-app`.
+- On Windows, reports written to stdout were encoded in the console code page instead of
+  UTF-8.
+- `double-coverage` flagged the same file deployed to different clusters or namespaces. It
+  now compares each resource's cluster and namespace, as ArgoCD does.
+- `duplicate-application-name` placed ApplicationSet-generated Applications in `argocd`
+  instead of the ApplicationSet's namespace.
 
 ## [1.2.2] - 2026-10-26
 
 ### Added
 
-- Added `examples/full-coverage`, one deliberately broken Application per rule, runnable
-  directly from a clone. Linked from the README with a comparison against
-  `argocd-diff-preview`, `kubechecks`, and `conftest`/`kubeconform`.
+- `examples/full-coverage`: one broken Application per rule.
 
 ## [1.2.1] - 2026-10-26
 
 ### Fixed
 
-- README's GitHub Action/GitLab CI/pre-commit examples still pinned `v1.1.1`, one version
-  behind what `v1.2.0` actually shipped. The Python package itself is unchanged.
+- The README's CI examples pinned `v1.1.1`. The Python package is unchanged.
 
 ## [1.2.0] - 2026-10-12
 
 ### Added
 
-- Added `floating-target-revision` for a `targetRevision` written as a version range
-  (`1.2.*`, `>=1.2.0 <1.3.0`, `*`) instead of an exact pin. Confirmed against the
-  official ArgoCD docs: a range is resolved against the highest matching chart version
-  or Git tag at every sync, so the deployed content can change with no corresponding
-  commit in this repository. Applies to both Helm chart sources and plain Git sources,
-  and never flags a branch name or `HEAD`.
+- `floating-target-revision` rule, for a `targetRevision` written as a version range
+  (`1.2.*`, `>=1.2.0 <1.3.0`, `*`).
 
 ## [1.1.1] - 2026-10-08
 
 ### Fixed
 
-- README's GitHub Action/GitLab CI/pre-commit examples still pinned `v1.0.2`, one version
-  behind what `v1.1.0` actually shipped. The Python package itself is unchanged.
+- The README's CI examples pinned `v1.0.2`. The Python package is unchanged.
 
 ## [1.1.0] - 2026-10-08
 
 ### Added
 
-- Added the optional `argocd_version` setting, narrowing `unknown-sync-option` and
-  `unknown-resource-hook` to the sync options/hooks actually available on that ArgoCD
-  version instead of every value ArgoCD has ever recognized. Every introduction version
-  was traced to the real `argoproj/argo-cd` commit that shipped it, not estimated. See
-  DESIGN.md. Omitting the setting keeps the previous, version-blind behavior.
+- `argocd_version` setting, narrowing `unknown-sync-option` and `unknown-resource-hook` to
+  the values that ArgoCD version recognizes.
 
 ### Fixed
 
-- `Prune`/`Delete` were treated as always-valid Application-level `syncOptions` keys.
-  They only became valid there in ArgoCD 3.4.0 (confirmed against the introducing code
-  commit, not just docs). Before that, only the per-resource annotation form worked.
-  Declaring an older `argocd_version` now catches this as a real silent no-op.
-- An invalid `.argocd-lint.yaml` (e.g. a malformed `argocd_version`) now exits with a
-  clear, field-by-field message and exit code 2 instead of a raw Python traceback.
+- `Prune`/`Delete` were accepted as Application-level `syncOptions` keys on any version;
+  they need ArgoCD 3.4.0.
+- An invalid `.argocd-lint.yaml` exits with code 2 and a message per field instead of a
+  traceback.
 
 ## [1.0.2] - 2026-09-23
 
 ### Changed
 
-- Rewrote README, DESIGN, CONTRIBUTING and SECURITY for tone and length. No
-  functional change. Published so the condensed README is what PyPI/TestPyPI
-  actually display. An already-published version's description can't be
-  edited in place, only a new version's can.
+- Shorter README, DESIGN, CONTRIBUTING and SECURITY. No functional change.
 
 ## [1.0.1] - 2026-09-22
 
 ### Fixed
 
-- Shortened the `action.yml` description to comply with GitHub Marketplace's 125-character limit.
-  The Python package was unchanged and was not republished to PyPI.
+- The `action.yml` description fits GitHub Marketplace's 125-character limit. Not
+  republished to PyPI.
 
 ## [1.0.0] - 2026-09-22
 
 ### Changed
 
-- Public v1 release on PyPI and GitHub Marketplace, with no functional change from `0.1.36`.
-- PyPI status changed from `Development Status :: 3 - Alpha` to `5 - Production/Stable`.
+- First stable release, with no functional change from `0.1.36`.
 
 ## [0.1.36] - 2026-09-22
 
 ### Security
 
-- `materialize_revision` now handles hostile tar archives rejected by PEP 706 instead of crashing the CLI.
-- Escaped repo-controlled values before rendering them with `rich`, preventing terminal markup injection.
-- Capped ApplicationSet `matrix` expansion at 10,000 combinations. Two `list` generators with
-  5,000 elements each previously produced 25,000,000 combinations in ~7s before any generated
-  Application was built.
-- Documented that `.argocd-lint.yaml` and `.argocd-lint-baseline.yaml` should be protected with
-  `CODEOWNERS`/branch protection when analyzing untrusted forks.
-- Audit also confirmed safe YAML loading, escaped structured reporters, and no known dependency
-  vulnerabilities in the resolved environment.
+- A tar archive rejected by PEP 706 leaves the revision `unverifiable` instead of crashing.
+- Table cells are escaped, so repository content can't inject terminal markup.
+- ApplicationSet `matrix` expansion is capped at 10,000 combinations.
+- `.argocd-lint.yaml` and the baseline should be protected with `CODEOWNERS` when linting
+  untrusted forks (documented).
 
 ## [0.1.35] - 2026-09-22
 
 ### Security
 
-- Replaced the regex-based glob matcher with a dynamic-programming implementation to eliminate a
-  repo-controlled ReDoS path. A pattern shaped like `*a*a*a...*a!` (~40 repetitions) against a
-  non-matching string of `a`s could hang indefinitely. Matching is now
-  `O(len(pattern) x len(candidate))`.
+- Glob matching no longer uses a backtracking regex, which a crafted pattern could hang.
 
 ## [0.1.34] - 2026-09-22
 
 ### Security
 
-- Prevented source paths such as `../outside-secret` from escaping the repository root. A crafted
-  Application could make coverage rules crash and document-based rules read files reachable outside
-  the checkout.
-- Applied the same containment checks to Kustomize
-  `resources`/`bases`/`components`/`crds`/`patches*`/generator references, which had an independent
-  traversal path through tracked `kustomization.yaml` content.
-- All resolved paths are now checked with `Path.is_relative_to` before they are read or traversed.
+- Source paths and Kustomize references can't read files outside the repository.
 
 ## [0.1.33] - 2026-09-22
 
 ### Security
 
-- Reject Git revisions beginning with `-` before invoking Git. A repo-controlled value such as
-  `--remote=https://<host>/x` was interpreted by `git archive` as an option rather than a revision,
-  causing a real outbound connection attempt and exposing an SSRF path from the CI job.
-- Rejected values use the existing `unverifiable` handling.
+- A Git revision beginning with `-` is rejected before Git runs, so it can't be read as an
+  option such as `--remote=<url>`.
 
 ## [0.1.32] - 2026-09-22
 
 ### Added
 
-- Added `malformed-ignore-diff-jq-expression` for invalid `ignoreDifferences.jqPathExpressions`.
-
-### Fixed
-
-- Added tests ensuring `DEFAULT_RULE_SEVERITIES` and SARIF rule metadata stay synchronized with the
-  registered rule set.
+- `malformed-ignore-diff-jq-expression` rule.
 
 ## [0.1.31] - 2026-09-22
 
 ### Fixed
 
-- Cached YAML document loading and covered-source discovery to avoid repeated parsing across rules.
-  In the profiling case used for this fix, 40 Applications with 15 covered files each cost ~4.9s
-  across only three rules before caching.
-- Cached Git tree listings per `(repo_root, revision)` for `phantom-target` and `broken-values-ref`.
-- Added a test ensuring every `Rule` subclass is registered in `cli.RULES`.
-
-### Changed
-
-- Promoted shared `$ref` parsing helpers to public internal helpers. No behavior change.
+- Parsed YAML files, covered files and Git tree listings are cached within a run.
 
 ## [0.1.30] - 2026-09-21
 
 ### Changed
 
-- Replaced repeated ApplicationSet generator resolver parameters with a shared `GeneratorContext`.
-  Internal refactor only.
+- Internal refactor of the ApplicationSet generator resolvers.
 
 ## [0.1.29] - 2026-09-21
 
 ### Fixed
 
-- Repository YAML discovery now runs once and is shared by manifest, ApplicationSet, and AppProject
-  discovery instead of walking and parsing the repository three times.
+- The repository is parsed once for Applications, ApplicationSets and AppProjects.
 
 ## [0.1.28] - 2026-09-21
 
 ### Fixed
 
-- Cached Git revision resolution per `(repo_root, revision)`. A benchmark with 50 Applications sharing
-  `HEAD` dropped from 702 `git rev-parse` calls to 1, reducing the measured Windows run from ~58s to ~5s.
+- Git revision lookups are cached within a run.
 
 ## [0.1.27] - 2026-09-21
 
 ### Fixed
 
-- Added a cycle-safe shared filesystem walker to prevent infinite traversal through directory
-  symlinks/junctions and avoid double-counting the same physical directory.
+- Discovery no longer loops on a directory symlink or Windows junction to an ancestor.
 
 ## [0.1.26] - 2026-09-21
 
 ### Fixed
 
-- Added an expanded-document size budget for YAML alias structures, preventing "billion laughs"-style
-  inputs from hanging downstream processing.
+- A YAML document whose aliases expand past 1,000,000 nodes is rejected.
 
 ## [0.1.25] - 2026-09-21
 
 ### Fixed
 
-- The CLI now fails clearly when `git` is missing instead of producing misleading findings.
-- GitLab CI installs `git` in `before_script` for images such as `python:3.11-slim`.
+- The CLI exits with code 2 when `git` is missing.
+- The GitLab template installs `git` for images such as `python:3.11-slim`.
 
 ## [0.1.24] - 2026-09-21
 
@@ -389,7 +399,7 @@ All notable changes to this project are documented in this file, following
 ### Fixed
 
 - ApplicationSet generator-level `selector` filtering is now reported as `unresolvable-generator`
-  instead of being silently ignored.
+  instead of being ignored without notice.
 
 ## [0.1.7] - 2026-09-15
 

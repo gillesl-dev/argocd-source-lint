@@ -15,8 +15,8 @@ Only the latest tagged release is supported. There is no LTS or backport policy.
 
 ## Trust model
 
-The repository being analyzed is **untrusted input**, including paths, revisions, glob patterns,
-names, and other manifest values.
+The repository being analyzed is untrusted input. That includes paths, revisions, glob patterns,
+names and other manifest values.
 
 Rules:
 

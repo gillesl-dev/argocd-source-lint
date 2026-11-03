@@ -193,10 +193,9 @@ spec:
 
 
 def test_plain_entry_missing_file_is_flagged(git_repo):
-    """Real gap fixed here (see argoproj/argo-cd#4558, "New Applications
-    with misconfiguration show up as Healthy"): a plain valueFiles entry
-    pointing to a nonexistent file used to be silently ignored by this
-    rule: it's the common case, not the exception."""
+    """A plain `valueFiles` entry pointing at a missing file is the common case
+    (see argoproj/argo-cd#4558, "New Applications with misconfiguration show up
+    as Healthy")."""
     repo_root = git_repo(
         {
             "bootstrap/argocd-apps/demo-app.yaml": """\
@@ -307,3 +306,96 @@ spec:
     assert finding.severity == Severity.UNVERIFIABLE
     assert "never-fetched-branch" in finding.message
     assert "fetch-depth" in finding.message
+
+
+def test_value_files_relative_to_the_chart_path_are_resolved(git_repo):
+    repo_root = git_repo(
+        {
+            "bootstrap/argocd-apps/app.yaml": """\
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: app
+spec:
+  source:
+    repoURL: https://example.invalid/repo.git
+    targetRevision: HEAD
+    path: charts/app
+    helm:
+      valueFiles:
+        - ./values.yaml
+        - ../shared/values.yaml
+        - https://example.invalid/remote-values.yaml
+        - ../shared/missing.yaml
+""",
+            "charts/app/Chart.yaml": "apiVersion: v2\nname: app\nversion: 0.1.0\n",
+            "charts/app/values.yaml": "a: 1\n",
+            "charts/shared/values.yaml": "b: 2\n",
+        }
+    )
+
+    findings = _run_broken_values_ref(repo_root)
+
+    assert len(findings) == 1
+    assert "charts/shared/missing.yaml" in findings[0].message
+
+
+def test_ignore_missing_value_files_also_covers_ref_entries(git_repo):
+    """Argo CD's repo-server checks the flag after resolving `$ref` paths too
+    (getResolvedValueFiles in reposerver/repository/repository.go)."""
+    repo_root = git_repo(
+        {
+            "bootstrap/argocd-apps/web.yaml": """\
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: web
+spec:
+  sources:
+    - repoURL: https://example.invalid/repo.git
+      targetRevision: HEAD
+      ref: values
+    - repoURL: https://example.invalid/repo.git
+      targetRevision: HEAD
+      path: charts/web
+      helm:
+        ignoreMissingValueFiles: true
+        valueFiles:
+          - $values/envs/missing.yaml
+""",
+            "charts/web/Chart.yaml": "apiVersion: v2\nname: web\nversion: 0.1.0\n",
+        }
+    )
+
+    assert _run_broken_values_ref(repo_root) == []
+
+
+def test_absolute_value_file_path_is_relative_to_the_repo_root(git_repo):
+    """Argo CD: "A path starting with `/` is treated as relative to the
+    repository root" (user guide, Helm)."""
+    repo_root = git_repo(
+        {
+            "bootstrap/argocd-apps/web.yaml": """\
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: web
+spec:
+  source:
+    repoURL: https://example.invalid/repo.git
+    targetRevision: HEAD
+    path: charts/web
+    helm:
+      valueFiles:
+        - /values/common.yaml
+        - /values/missing.yaml
+""",
+            "charts/web/Chart.yaml": "apiVersion: v2\nname: web\nversion: 0.1.0\n",
+            "values/common.yaml": "a: 1\n",
+        }
+    )
+
+    findings = _run_broken_values_ref(repo_root)
+
+    assert len(findings) == 1
+    assert "values/missing.yaml" in findings[0].message

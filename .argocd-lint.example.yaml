@@ -24,17 +24,38 @@ rules:
   malformed-sync-wave: warning
   floating-target-revision: warning
 
-# Default: true (fail-closed). Only set to false knowingly if the team
-# accepts running on an incomplete shallow clone in CI.
+# Default: true. With false, a revision missing from a shallow CI clone
+# no longer fails the run.
 unverifiable_blocks_ci: true
 
 exclude_paths:
   - manifests/legacy/**
 
-# Narrows unknown-sync-option/unknown-resource-hook to what this exact
-# ArgoCD version actually recognizes. Omit it (the default) and both rules
-# keep accepting every value ArgoCD has ever recognized, regardless of
-# version. For example, `Prune`/`Delete` as Application-level syncOptions
-# keys only work from ArgoCD 3.4.0 onward; declaring an older version here
-# catches that real silent no-op.
+# Other URLs ArgoCD uses for this repository, when they differ from the
+# `origin` remote of the checkout (an SSH host alias, a mirror). Sources
+# matching none of them are treated as another repository.
+# repo_urls:
+#   - https://github.com/my-org/gitops.git
+
+# Folders that each hold the Applications of a separate ArgoCD instance.
+# Names and destinations are only compared within the same instance.
+# argocd_instances:
+#   - clusters/prod
+#   - clusters/staging
+
+# Your ArgoCD version. unknown-sync-option and unknown-resource-hook then
+# also report values it doesn't know yet. Omitted by default.
 # argocd_version: "3.2.0"
+
+# true when the ApplicationSet controller runs with
+# --enable-new-git-file-globbing. Default: false.
+# new_git_file_globbing: true
+
+# More operator signatures for missing-ignore-diff, added to the built-in
+# ones. See docs/rules.md#missing-ignore-diff.
+# known_operators:
+#   - crd_trigger: example.com/Database
+#     name_from: metadata.name
+#     expect_ignore_on:
+#       - kind: Secret
+#         name_pattern: "{name}-credentials"

@@ -18,9 +18,10 @@ _SEVERITY_STYLE = {
 
 
 def render_info_summary(console: Console, infos: list[Finding]) -> None:
-    """One line per kind of hidden `info` finding, so none of them vanishes
-    without a count. An external source is counted once, not once per rule
-    that skipped it."""
+    """Print a count of hidden `info` findings, one line per kind.
+
+    External sources are counted once, not once per rule that skipped them.
+    """
     if not infos:
         return
     external = [finding for finding in infos if finding.external_source]
@@ -58,20 +59,10 @@ def render_findings(console: Console, findings: list[Finding]) -> None:
         location = finding.file.as_posix()
         if finding.line is not None:
             location += f":{finding.line}"
-        # `rich.table.Table.add_row` parses every string argument as
-        # rich markup by default; confirmed for real, not assumed: an
-        # Application name or a finding message containing `[link=...]`
-        # rendered as an actual clickable hyperlink, and `[bold red on
-        # white]`-style tags actually re-styled the output. Every field
-        # below can contain repo-controlled content (an Application's
-        # own `metadata.name`, a filename, a rule's own message text
-        # quoting something from the manifest); `escape()` so a
-        # crafted repo can't spoof or restyle this tool's own terminal
-        # output. `finding.severity.value`/`style` are never repo
-        # content (a closed enum/style map this tool controls), so
-        # that one stays real markup.
-        # `escape()` alone lets terminal control sequences through, hence
-        # `visible_controls` first (see safe_text.py).
+        # add_row parses strings as Rich markup, and these fields carry
+        # repo content: escape them so a crafted repo cannot inject links
+        # or styles. escape() lets control characters through, hence
+        # visible_controls. Severity and style are ours, so stay markup.
         table.add_row(
             f"[{style}]{finding.severity.value}[/{style}]",
             escape(visible_controls(finding.rule_id)),

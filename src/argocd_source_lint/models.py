@@ -2,8 +2,9 @@ from __future__ import annotations
 
 from enum import Enum
 from pathlib import Path
+from string import Formatter
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 
 class Severity(str, Enum):
@@ -30,22 +31,20 @@ class Source(BaseModel):
     chart: str | None = None
     ref: str | None = None
     helm_value_files: list[str] = Field(default_factory=list)
-    # Line of each `helm_value_files` entry, same order/index: best-effort
-    # (None when the source YAML wasn't round-trip parsed, e.g. in tests
-    # that build a `Source` directly).
+    # Line of each `helm_value_files` entry, None when unknown.
     helm_value_files_lines: list[int | None] = Field(default_factory=list)
-    # spec.source(s)[].helm.ignoreMissingValueFiles: when true, ArgoCD
-    # itself silently skips any missing valueFiles entry rather than
-    # failing, so broken-values-ref has nothing to check for this source.
+    # When true, Argo CD skips missing valueFiles instead of failing, so
+    # broken-values-ref has nothing to check.
     helm_ignore_missing_value_files: bool = False
-    # `spec.source(s)[].directory` (only relevant when `path` is a directory
-    # of raw manifests, not a Helm chart or a Kustomize overlay).
-    # Defaults aligned with ArgoCD: recurse=false, no filter.
+    # `spec.source(s)[].directory`, for plain manifest directories only.
+    # Defaults match Argo CD: no recursion, no filter.
     directory_recurse: bool = False
     directory_include: str | None = None
     directory_exclude: str | None = None
-    # 1-indexed line where this source's YAML mapping starts, for
-    # `Finding.line`; best-effort, None when unavailable.
+    # "directory", "helm", "kustomize" or "plugin" when the source sets that
+    # field, which overrides detection from the files (`ExplicitType` in Argo CD).
+    explicit_type: str | None = None
+    # 1-indexed start line of this source's mapping, None when unknown.
     line: int | None = None
 
 
@@ -55,21 +54,34 @@ class ExpectedIgnoreDiff(BaseModel):
 
 
 class KnownOperatorSignature(BaseModel):
-    """A signature from the `rules/known-operators.yaml` pack (used by the
-    missing-ignore-diff rule): a trigger CRD, how to extract the instance
-    name from it, and the expected derived resources with
-    `ignoreDifferences`."""
+    """An operator signature for missing-ignore-diff.
+
+    Maps a trigger CRD to the derived resources that need `ignoreDifferences`.
+    """
 
     crd_trigger: str
     name_from: str
-    # Optional dotted path to a mapping (e.g. a Zalando `postgresql`
-    # resource's `spec.users`); when set, `expect_ignore_on` is
-    # evaluated once per key of that mapping, with `{user}` bound to the
-    # key and `{name}` still bound to `name_from` (see DESIGN.md
-    # "known_operators: name_from_each"). `None` keeps the original
-    # single-name behavior (`{name}` only), unaffected.
+    # Dotted path to a mapping, such as a Zalando `postgresql` resource's
+    # `spec.users`. `expect_ignore_on` is then evaluated once per key, bound to
+    # `{user}` (see DESIGN.md).
     name_from_each: str | None = None
     expect_ignore_on: list[ExpectedIgnoreDiff]
+
+    @model_validator(mode="after")
+    def _check_placeholders(self) -> KnownOperatorSignature:
+        allowed = {"name", "user"} if self.name_from_each else {"name"}
+        for expected in self.expect_ignore_on:
+            try:
+                fields = {field for _, field, _, _ in Formatter().parse(expected.name_pattern)}
+            except ValueError as exc:
+                raise ValueError(f"name_pattern {expected.name_pattern!r}: {exc}") from None
+            unknown = sorted(f"{{{f}}}" for f in fields - allowed if f is not None)
+            if unknown:
+                raise ValueError(
+                    f"name_pattern {expected.name_pattern!r} uses {', '.join(unknown)}; "
+                    "only {name}, and {user} with name_from_each, are available"
+                )
+        return self
 
 
 class Application(BaseModel):
@@ -77,26 +89,23 @@ class Application(BaseModel):
     namespace: str
     sources: list[Source]
     sync_policy_self_heal: bool = False
-    # Line of the `selfHeal` key, when true: for `missing-ignore-diff`'s
-    # `Finding.line` (best-effort, None when unavailable).
+    # Line of the `selfHeal` key when it is true, None when unknown.
     self_heal_line: int | None = None
     ignore_differences: list[IgnoreDiffRule] = Field(default_factory=list)
-    # Line of the `ignoreDifferences` key itself: best-effort anchor for
-    # `malformed-ignore-diff-pointer` (a specific entry's own line isn't
-    # tracked, same trade-off as `self_heal_line`/`sync_options_line`).
+    # Line of the `ignoreDifferences` key. Individual entry lines are not tracked.
     ignore_differences_line: int | None = None
-    # `spec.syncPolicy.syncOptions` verbatim (e.g. "RespectIgnoreDifferences=true",
-    # "Validate=false"); used by `hpa-selfheal-conflict`/`sync-validation-disabled`.
+    # `spec.syncPolicy.syncOptions` verbatim, such as "Validate=false".
     sync_options: list[str] = Field(default_factory=list)
     sync_options_line: int | None = None
     source_file: Path
-    # `spec.project` (defaults to "default", same as ArgoCD itself) and
-    # `spec.destination`; used by `project-scope-violation` only.
+    # `spec.project` defaults to "default", as in Argo CD.
     project: str = "default"
     project_line: int | None = None
     destination_server: str | None = None
     destination_name: str | None = None
     destination_namespace: str | None = None
+    # From `argocd-source-lint/ignore-<rule-id>` annotations: rule id to reason.
+    ignored_rules: dict[str, str] = Field(default_factory=dict)
 
 
 class AppProjectDestination(BaseModel):
@@ -106,9 +115,7 @@ class AppProjectDestination(BaseModel):
 
 
 class AppProject(BaseModel):
-    """`kind: AppProject`; used only by `project-scope-violation` to
-    check an Application's sources/destination against the scope its own
-    `spec.project` grants it."""
+    """The source and destination scope an `AppProject` grants its Applications."""
 
     name: str
     source_repos: list[str] = Field(default_factory=list)
@@ -123,7 +130,9 @@ class Finding(BaseModel):
     message: str
     file: Path
     line: int | None = None
-    # Set by `rules.base.external_source_finding` only, so the table can
-    # report the same out-of-scope source once instead of once per rule.
-    # Excluded from `model_dump`: machine-readable reports are unchanged.
+    # Lets the table report an external source once instead of once per rule.
+    # Excluded from `model_dump` so machine-readable reports do not include it.
     external_source: bool = Field(default=False, exclude=True)
+    # For an ApplicationSet that is not fully expanded: the folders its
+    # Applications may deploy from ("" for anywhere). Not reported either.
+    unexpanded_paths: tuple[str, ...] = Field(default=(), exclude=True)

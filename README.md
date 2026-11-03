@@ -4,382 +4,145 @@
 [![License: MIT](https://img.shields.io/github/license/gillesl-dev/argocd-source-lint)](./LICENSE)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue)](https://www.python.org/)
 [![Ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)](https://github.com/astral-sh/ruff)
-[![Status: Stable](https://img.shields.io/badge/status-stable-brightgreen)](#)
 
-Static linter for detecting silent failures in ArgoCD `Application` resources, from the Git
-checkout alone.
-
-It catches cases that are easy to miss because ArgoCD may still report an Application as healthy and synced: manifests that are never referenced, broken `$values` references, missing `ignoreDifferences`, invalid targets, conflicting Applications, and similar configuration issues.
-
-`argocd-source-lint` works from the Git checkout already available in CI. It doesn't connect to the Kubernetes cluster and does not require a `kubeconfig` or cluster credentials.
+Lints ArgoCD Applications for mistakes ArgoCD doesn't report, from the Git checkout alone: no
+cluster, kubeconfig or network access.
 
 ![Table output of argocd-source-lint on a small repository: two errors for an orphan file and a missing path, two warnings for a CNPG cluster without ignoreDifferences, and one error for a file deployed twice to the same place](https://raw.githubusercontent.com/gillesl-dev/argocd-source-lint/main/docs/sample-run.svg)
 
-## Contents
+Some of these mistakes ArgoCD never reports, such as a manifest in an Application's folder
+that is never applied, or a misspelled sync option or hook value that it ignores. Others,
+such as a `$values` file that doesn't exist, only show up once the change is merged and
+synced. This tool reports both on the pull request.
 
-- [What the tool does](#what-the-tool-does)
-- [Compared to other tools](#compared-to-other-tools)
-- [How it works](#how-it-works)
-- [Limitations](#limitations)
-- [Installation](#installation)
-- [Usage](#usage)
-- [Configuration](#configuration)
-- [Using it on an existing repository](#using-it-on-an-existing-repository)
-- [CI/CD integration](#cicd-integration)
-- [Development](#development)
-- [Changelog](./CHANGELOG.md)
-- [Security policy](./SECURITY.md)
-- [License](#license)
+## Quick start
 
-## What the tool does
+It needs Python 3.11 or later and `git` on `PATH`. From the root of the Git repository that
+holds your Applications:
+
+```bash
+pipx install argocd-source-lint   # or: pip install argocd-source-lint
+argocd-source-lint .
+```
+
+`orphan-source`, the check for files no Application deploys, only looks at the folders you
+list. Add them in a `.argocd-lint.yaml` at the root of the repository:
+
+```yaml
+scan_roots:
+  - manifests/
+```
+
+A source counts as this repository when its `repoURL` matches the checkout's `origin`
+remote. If your Applications use another URL, such as an SSH host alias, list it under
+`repo_urls` (see [Configuration](#configuration)); otherwise every source is treated as
+another repository, and the output says so.
+
+The exit code is `1` when a blocking problem is found (see [Exit codes](#exit-codes)).
+[`examples/full-coverage`](./examples/full-coverage) has one broken Application per rule;
+run it from an HTTPS clone of this repository, since its Applications point at that URL.
+
+## Rules
 
 | Rule | Default severity | Detects |
 | --- | --- | --- |
-| `orphan-source` | error | A manifest present in the repository but not covered by any declared source |
+| `orphan-source` | error | A YAML file under `scan_roots` that no Application source covers |
 | `broken-values-ref` | error | A Helm `valueFiles` entry, including `$ref`, that points to a file that doesn't exist |
-| `missing-ignore-diff` | warning | A known at-risk CRD with `selfHeal: true` but no matching `ignoreDifferences` configuration |
-| `phantom-target` | error | A `targetRevision` or `path` that resolves to nothing in the repository |
+| `missing-ignore-diff` | warning | A known operator resource (CNPG, cert-manager, Strimzi...) under `selfHeal: true` without the `ignoreDifferences` its generated objects need |
+| `phantom-target` | error | A source `path` that doesn't exist at its `targetRevision` |
 | `unresolvable-generator` | info | An `ApplicationSet` generator that can't be resolved from the local checkout alone |
-| `double-coverage` | error | A file covered by more than one different Application, with each Application syncing it independently |
-| `revision-mismatch` | info | A source whose `targetRevision` differs from the checked-out revision |
+| `double-coverage` | error | The same resource deployed by two Applications to the same cluster and namespace |
+| `revision-mismatch` | info | A source whose `targetRevision` points to another commit than the checked-out one |
 | `project-scope-violation` | error | An Application source or destination outside the `sourceRepos` or `destinations` allowed by its `AppProject` |
 | `hpa-selfheal-conflict` | warning | An HPA and ArgoCD `selfHeal` both managing `spec.replicas` without the required ignore configuration |
 | `sync-validation-disabled` | info | The `Validate=false` sync option, which allows an invalid manifest to be applied |
 | `duplicate-application-name` | error | Two or more Applications using the same namespace and name |
 | `malformed-ignore-diff-pointer` | warning | An `ignoreDifferences.jsonPointers` entry that doesn't start with `/` as required by RFC 6901 |
-| `malformed-ignore-diff-jq-expression` | warning | An `ignoreDifferences.jqPathExpressions` entry that doesn't start with `.` and fails to compile as jq |
+| `malformed-ignore-diff-jq-expression` | warning | An `ignoreDifferences.jqPathExpressions` entry written as a JSON pointer or a path without its leading `.` |
 | `unknown-sync-option` | warning | An unknown or incorrectly cased ArgoCD sync option |
 | `unknown-resource-hook` | warning | An unknown ArgoCD hook or hook deletion policy value |
 | `malformed-sync-wave` | warning | A sync-wave annotation whose value isn't a valid integer |
 | `floating-target-revision` | warning | A `targetRevision` written as a version range instead of an exact pin |
 
-### A few examples
-
-`duplicate-application-name` catches two Applications using the same namespace and name. ArgoCD identifies an Application by that pair, so duplicates can end up competing for the same object.
-
-With `hpa-selfheal-conflict`, the problem is `spec.replicas`. If an HPA owns it while ArgoCD self-heal is enabled, ArgoCD can keep restoring the configured replica count. The rule checks for both `ignoreDifferences` and the `RespectIgnoreDifferences` sync option.
-
-A malformed JSON pointer is easier to miss than it looks. Entries under `ignoreDifferences.jsonPointers` have to start with `/`.
-
-`malformed-ignore-diff-jq-expression` checks the other form of ignore rule. A malformed jq expression can invalidate the `ignoreDifferences` configuration for that Application.
-
-Sync options are case-sensitive. Something that looks close enough can still be ignored by ArgoCD, which is what `unknown-sync-option` looks for.
-
-For sync waves, the annotation value has to be an integer. An invalid value falls back to wave `0`.
-
-`floating-target-revision` catches a `targetRevision` such as `1.2.*` or `>=1.2.0 <1.3.0`. ArgoCD resolves that kind of range against the highest matching chart version or Git tag at every sync, so the deployed content can change with no corresponding commit in this repository.
-
-Sample run using the default table output, on a small repository with a phantom
-target, an orphan file, a file deployed twice to the same namespace by two Applications,
-and a CNPG cluster missing its `ignoreDifferences`:
-
-```text
-$ argocd-source-lint /home/user/gitops-repo
-
-4 ArgoCD Application(s) discovered under /home/user/gitops-repo
-
-┏━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
-┃ Severity ┃ Rule                ┃ Application      ┃ File                           ┃ Message                         ┃
-┡━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┩
-│ error    │ orphan-source       │ -                │ manifests/legacy/old-ingress.… │ File not covered by any         │
-│          │                     │                  │                                │ Application source:             │
-│          │                     │                  │                                │ manifests/legacy/old-ingress.y… │
-│ error    │ phantom-target      │ payments-service │ bootstrap/argocd-apps/payment… │ path `apps/does-not-exist` not  │
-│          │                     │                  │                                │ found at revision `HEAD` —      │
-│          │                     │                  │                                │ phantom target.                 │
-│ warning  │ missing-ignore-diff │ postgres-cluster │ bootstrap/argocd-apps/postgre… │ selfHeal active and             │
-│          │                     │                  │                                │ `postgresql.cnpg.io/Cluster`    │
-│          │                     │                  │                                │ `postgres-cluster` detected,    │
-│          │                     │                  │                                │ but no `ignoreDifferences`      │
-│          │                     │                  │                                │ covers `Secret`                 │
-│          │                     │                  │                                │ `postgres-cluster-app` — ArgoCD │
-│          │                     │                  │                                │ risks resetting this            │
-│          │                     │                  │                                │ out-of-Git-managed field on     │
-│          │                     │                  │                                │ every sync.                     │
-│ warning  │ missing-ignore-diff │ postgres-cluster │ bootstrap/argocd-apps/postgre… │ selfHeal active and             │
-│          │                     │                  │                                │ `postgresql.cnpg.io/Cluster`    │
-│          │                     │                  │                                │ `postgres-cluster` detected,    │
-│          │                     │                  │                                │ but no `ignoreDifferences`      │
-│          │                     │                  │                                │ covers `Secret`                 │
-│          │                     │                  │                                │ `postgres-cluster-ca` — ArgoCD  │
-│          │                     │                  │                                │ risks resetting this            │
-│          │                     │                  │                                │ out-of-Git-managed field on     │
-│          │                     │                  │                                │ every sync.                     │
-│ error    │ double-coverage     │ -                │ manifests/shared/configmap.ya… │ File covered by 2 different     │
-│          │                     │                  │                                │ Applications: team-a, team-b —  │
-│          │                     │                  │                                │ ArgoCD would sync it from       │
-│          │                     │                  │                                │ independent loops, risking it   │
-│          │                     │                  │                                │ flapping between whichever      │
-│          │                     │                  │                                │ Application last applied it.    │
-└──────────┴─────────────────────┴──────────────────┴────────────────────────────────┴─────────────────────────────────┘
-```
-
-Three errors and two warnings here, so the process exits with code 1 (see
-[Exit codes](#exit-codes) below).
-
-`info` findings never block CI, so the table only counts them, one line per rule, below the
-table. A source in another repository is counted once, although several rules each report
-it. Pass `--show-info` to list them. JSON, SARIF, JUnit and GitLab reports always include
-every finding.
-
-[`examples/full-coverage`](./examples/full-coverage) has one deliberately broken Application
-per rule. Clone the repository and run the linter against that folder to see all of them fire
-on a real checkout.
-
-## Compared to other tools
-
-Of the ArgoCD-adjacent tools found while researching this, going by their current
-documentation, none documents a rule for orphan sources, missing `ignoreDifferences`, phantom
-targets, or double coverage. They solve a different, complementary problem:
-
-| | Needs a cluster or a running ArgoCD | Primary purpose |
-| --- | --- | --- |
-| `argocd-source-lint` | No | Static analysis of the Git checkout: orphan sources, broken `$values` refs, missing `ignoreDifferences`, phantom targets, double coverage, floating `targetRevision`, and more |
-| [argocd-diff-preview](https://github.com/dag-andersen/argocd-diff-preview) | No (renders through ArgoCD's own code) | Shows the real rendered manifest diff on a pull request |
-| [kubechecks](https://github.com/zapier/kubechecks) | Yes | Schema/policy checks (`kubepug`, `kubeconform`, `conftest`) plus a live-state diff comment on a pull request |
-| [conftest](https://www.conftest.dev/) / [kubeconform](https://github.com/yannh/kubeconform) | No | Generic OPA policy checks and schema validation; not aware of ArgoCD's own semantics by themselves |
-
-`argocd-diff-preview` and `argocd-source-lint` answer different questions about the same pull
-request: one shows what would change, the other flags configuration that makes ArgoCD behave
-in a way Git doesn't record at all. The two compose well together.
-
-## How it works
-
-```mermaid
-flowchart LR
-    A["Git repo checkout"] --> B["Discovery<br/>Applications + ApplicationSets"]
-    B --> C["Rules<br/>orphan-source, broken-values-ref,<br/>missing-ignore-diff, phantom-target,<br/>unresolvable-generator, double-coverage,<br/>revision-mismatch, project-scope-violation,<br/>hpa-selfheal-conflict, sync-validation-disabled,<br/>duplicate-application-name, malformed-ignore-diff-pointer,<br/>malformed-ignore-diff-jq-expression, unknown-sync-option,<br/>unknown-resource-hook, malformed-sync-wave,<br/>floating-target-revision"]
-    C --> D{"Policy<br/>severity overrides + baseline"}
-    D --> E["Reporters<br/>table, json, sarif, gitlab-codequality, junit"]
-```
-
-Discovery and rule evaluation only read the filesystem and the local Git repository. There are no network calls and no cluster credentials are required.
-
-That makes the linter suitable for a normal CI job as long as the repository has already been checked out.
-
-## Limitations
-
-### Kubernetes cluster
-
-The linter works from the repository checkout and doesn't query the Kubernetes cluster. Checks that require live cluster state aren't covered.
-
-### Kustomize
-
-Kustomize overlays aren't rendered. If you need to validate the rendered result, run `kustomize build` or a dedicated Kustomize validation tool separately.
-
-`orphan-source` does inspect `kustomization.yaml`, though. It follows local references from:
-
-- `resources`
-- `bases`
-- `components`
-- `crds`
-- `patches`
-- generators
-
-This keeps referenced files in an overlay from being reported as orphans.
-
-Remote Kustomize resources are skipped because they cannot be verified from the local checkout.
-
-See [DESIGN.md](./DESIGN.md) for more details.
-
-### Helm
-
-Helm charts are not rendered either. A resource a chart template produces only exists
-after `helm template` runs, so it is never a file in the repository and no rule can
-see it.
-
-This is a different situation from Kustomize above. A Kustomize-managed resource is
-still a real, committed file that the content-based rules (`missing-ignore-diff`,
-`hpa-selfheal-conflict`, and others) read directly, even though the overlay itself
-isn't applied.
-
-### Several GitOps trees in one repository
-
-The repository is read as one GitOps tree. A template repository holding one tree per cloud
-provider or per cluster, each meant to be deployed on its own, is still read as one: the same
-Application name in two trees is reported as `duplicate-application-name`. Names that still
-contain an unfilled placeholder such as `<CLUSTER_NAME>` are not compared, since no
-Application can be created with them.
-
-### ApplicationSet
-
-The following generators can be resolved locally:
-
-- `list`
-- `git` with `directories`
-- `git` with `files`
-- `matrix`
-- `merge`
-
-Applications produced from them go through the same rules as regular `Application` resources.
-
-Some generators need information that is not available from a checkout alone. This includes:
-
-- `clusters`
-- `scmProvider`
-- `pullRequest`
-- `plugin`
-- `goTemplate: true`
-- generator-level `selector` filtering
-
-Those cases are reported as `unresolvable-generator`.
-
-### Multi-repository Applications
-
-If an Application points to another Git repository, the linter cannot inspect that repository from the current checkout.
-
-The source is still detected and reported as `info`.
-
-## Installation
-
-```bash
-pip install argocd-source-lint
-```
-
-## Usage
-
-Run the linter from the root of the repository:
-
-```bash
-argocd-source-lint .
-```
-
-Available output formats are:
-
-```text
-table
-json
-sarif
-gitlab-codequality
-junit
-```
-
-For example:
-
-```bash
-argocd-source-lint . --format sarif --output results.sarif
-```
-
-### Exit codes
-
-The command returns:
-
-- `0` when there is no blocking finding
-- `1` when at least one blocking finding is present
-
-An `error` always blocks CI.
-
-An `unverifiable` result also blocks by default. This can happen when a Git revision can't be resolved locally, for example with an incomplete shallow clone.
-
-You can change that behavior with:
-
-```yaml
-unverifiable_blocks_ci: false
-```
-
-When no ArgoCD Application is found, nothing was checked. The command prints a warning instead of "No issues detected" (on stderr for the non-table formats) and still exits `0`. Pass `--fail-on-empty` to exit `1` in that case, for example when a wrong path in CI should not look like a clean run:
-
-```bash
-argocd-source-lint . --fail-on-empty
-```
-
-## Configuration
-
-Copy [`.argocd-lint.example.yaml`](./.argocd-lint.example.yaml) to `.argocd-lint.yaml` at the root of the repository.
-
-Any setting you leave out keeps its default value.
-
-`scan_roots` lists the folders where every YAML file should belong to an Application. It has no default, because only you know which folders hold deployable manifests. Without it, `orphan-source` checks nothing, and the output says so. An entry that is not a directory in the repository is reported the same way.
-
-```yaml
-scan_roots:
-  - manifests/
-  - infra/
-
-rules:
-  orphan-source: error
-  broken-values-ref: error
-  missing-ignore-diff: warning
-  phantom-target: error
-  unresolvable-generator: info
-  double-coverage: error
-  revision-mismatch: info
-  project-scope-violation: error
-  hpa-selfheal-conflict: warning
-  sync-validation-disabled: info
-  duplicate-application-name: error
-  malformed-ignore-diff-pointer: warning
-  malformed-ignore-diff-jq-expression: warning
-  unknown-sync-option: warning
-  unknown-resource-hook: warning
-  malformed-sync-wave: warning
-  floating-target-revision: warning
-
-unverifiable_blocks_ci: true
-
-exclude_paths:
-  - manifests/legacy/**
-
-# Narrows unknown-sync-option/unknown-resource-hook to what this exact
-# ArgoCD version actually recognizes. Omitted by default, which keeps both
-# rules accepting every value ArgoCD has ever recognized, regardless of
-# version.
-argocd_version: "3.2.0"
-
-# Additional operator signatures.
-# These are added to the built-in signatures for:
-# CNPG, cert-manager, Elastic ECK, RabbitMQ, Strimzi,
-# Zalando Postgres Operator, Keycloak Operator and
-# External Secrets Operator.
-known_operators:
-  - crd_trigger: my-operator.io/MyCRD
-    name_from: metadata.name
-    expect_ignore_on:
-      - kind: Secret
-        name_pattern: "{name}-credentials"
-```
-
-Custom `known_operators` entries extend the built-in operator list. They don't replace it.
-
-`argocd_version` only affects `unknown-sync-option` and `unknown-resource-hook`. Some
-recognized values are newer than others. For example, `Prune`/`Delete` only became valid
-Application-level `syncOptions` keys in ArgoCD 3.4.0, and the `PreDelete` hook only exists
-since 3.3.0. Declaring your real ArgoCD version catches the case where a value is spelled
-correctly but isn't available yet on your cluster, where it's just as silent a no-op as a
-typo. Every version in the tool's data was traced to the ArgoCD commit that introduced it,
-not estimated. See [DESIGN.md](./DESIGN.md) for the sourcing method.
+[docs/rules.md](./docs/rules.md) explains each rule, what ArgoCD does in that case, and how to
+fix it.
+
+A revision that isn't in the checkout at all can't be checked. `phantom-target` and
+`broken-values-ref` report it as `unverifiable` instead of guessing.
 
 ## Using it on an existing repository
 
-Running the linter for the first time on an established repository may uncover findings you don't want to fix immediately.
-
-For example, there may be a leftover manifest from a decommissioned component or files that are deliberately deployed through another process.
-
-You can record the current state as a baseline:
+The first run on an established repository may report findings you don't want to fix right
+away, such as a manifest left over from a removed component. Record them as a baseline:
 
 ```bash
 argocd-source-lint . --write-baseline
 ```
 
-This creates:
+This writes `.argocd-lint-baseline.yaml`. Commit it: later runs report only new findings. The
+file is plain YAML, and running `--write-baseline` again replaces it with the current findings.
 
-```text
-.argocd-lint-baseline.yaml
+To accept a finding for one Application instead, annotate it with the rule and a reason:
+
+```yaml
+metadata:
+  annotations:
+    argocd-source-lint/ignore-phantom-target: "path is created by a Job at sync time"
 ```
 
-Commit the file with the repository. Later runs will still report new findings, while entries already recorded in the baseline are accepted.
+## Usage
 
-The baseline is plain YAML, so it's easy to review or edit when needed.
+```bash
+argocd-source-lint [PATH] [OPTIONS]
+```
 
-Running `--write-baseline` again replaces the existing baseline with the current findings.
+| Option | Effect |
+| --- | --- |
+| `--format`, `-f` | `table` (default), `json`, `sarif`, `gitlab-codequality`, `junit`, or `github` for pull request annotations in GitHub Actions |
+| `--output`, `-o` | Write the report to a file instead of stdout |
+| `--show-info` | List `info` findings in the table instead of counting them per rule |
+| `--fail-on-empty` | Exit with `1` when no ArgoCD Application is found |
+| `--write-baseline` | Accept every current finding into `.argocd-lint-baseline.yaml` |
+| `--only RULE`, `--skip RULE` | Run only these rules, or all but these. Repeatable |
+| `--target-branch BRANCH` | Branch a pull request goes into; Applications tracking it are checked against the checkout |
+| `--list-rules` | Print every rule with its default severity |
+| `--version` | Print the version |
+
+`info` findings never block CI, so the table only counts them, one line per rule. A source in
+another repository is counted once, although several rules each report it. JSON, SARIF, JUnit
+and GitLab reports always include every finding.
+
+When no ArgoCD Application is found, or `scan_roots` is not set, the output says what was not
+checked instead of "No issues detected" (on stderr for the formats other than `table`).
+
+### Exit codes
+
+| Code | Meaning |
+| --- | --- |
+| `0` | No blocking finding |
+| `1` | At least one blocking finding, or no Application found with `--fail-on-empty` |
+| `2` | The tool could not run: path not found, `git` missing, an invalid `.argocd-lint.yaml`, an unknown rule in `--only`/`--skip`, or `--write-baseline` combined with either |
+
+An `error` always blocks. An `unverifiable` finding blocks too by default, so an incomplete
+checkout doesn't look like a clean run; `unverifiable_blocks_ci: false` in
+`.argocd-lint.yaml` makes it non-blocking.
 
 ## CI/CD integration
 
+The linter needs the commits your Applications target. A revision is looked up as written,
+then as `origin/<revision>`, so a branch that only exists as a remote-tracking branch, as in
+the detached checkout of a pull request, is found. A revision missing from the clone comes out
+as `unverifiable`.
+
+In a pull request, Applications that track the branch the change goes into are checked
+against the change itself. The branch is read from `GITHUB_BASE_REF` (GitHub) or
+`CI_MERGE_REQUEST_TARGET_BRANCH_NAME` (GitLab merge request pipelines); elsewhere, pass
+`--target-branch main`.
+
+Each tag of the GitHub Action and the GitLab component installs its own release of the tool,
+so `@v1.4.0` always runs 1.4.0. A new release reaches your CI only when you move the tag.
+
 ### GitHub Actions
-
-The action publishes its SARIF report through `github/codeql-action/upload-sarif`.
-
-That upload needs permissions on the calling job:
 
 ```yaml
 jobs:
@@ -393,81 +156,145 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
-
-      - uses: gillesl-dev/argocd-source-lint@v1.3.1
         with:
-          path: .
+          fetch-depth: 0
+
+      - uses: gillesl-dev/argocd-source-lint@v1.4.0
 ```
 
-`actions: read` and `contents: read` are needed for private repositories.
+`fetch-depth: 0` fetches every branch and tag, so Applications pinned to another branch or a
+tag can be checked; `actions/checkout` fetches a single commit by default. The SARIF report is
+uploaded to code scanning, which needs `security-events: write` (`actions: read` and
+`contents: read` only on private repositories). On pull requests from forks and from
+Dependabot, whose token is read-only, a failed upload doesn't fail the job.
 
-Each tag installs its own release of the tool, so `@v1.3.1` always runs 1.3.1. A new release
-reaches your CI only when you move the tag, which is also true of the GitLab component below.
-Tags up to `v1.3.0` installed the latest release from PyPI instead.
+| Input | Default | Effect |
+| --- | --- | --- |
+| `path` | `.` | Root of the Git repository, not a subfolder of it |
+| `fail-on-error` | `true` | `false` reports without failing the job, for a progressive rollout. A tool error (exit code `2`) still fails it |
+| `fail-on-empty` | `true` | Fail when no Application is found, which usually means a wrong path |
+| `upload-sarif` | `true` | `false` where code scanning isn't available, such as a private repository without GitHub Code Security |
+| `category` | | Code scanning category of the report. Needed when the Action runs more than once in a workflow run, such as once per path |
+| `args` | | Extra options, for example `--skip orphan-source`. Split on spaces, so an option value can't contain one. `--format` and `--output` are set by the Action |
+| `python-version` | `3.11` | Python used to run the tool, in its own virtual environment |
+
+The `sarif-file` output gives the path of the SARIF report. With `fail-on-error: false`, a
+missing Application doesn't fail the job either; only a tool error does.
 
 ### GitLab CI
 
-GitLab components have to be hosted on the same GitLab instance as the project using them.
-
-`argocd-source-lint` is hosted on GitHub. Start by copying [`templates/lint.yml`](./templates/lint.yml) into a project on your GitLab instance.
-
-You'll also need a `README.md` at the root of that project for GitLab's component layout.
-
-Then include the component using a tag, branch, or commit SHA:
+A GitLab component has to be hosted on the same GitLab instance as the projects using it.
+Copy [`templates/lint.yml`](./templates/lint.yml) into a project on your instance, with a
+`README.md` at its root, then include it by tag, branch or commit SHA. It doesn't need to be
+published in the CI/CD Catalog.
 
 ```yaml
 include:
-  - component: $CI_SERVER_FQDN/<your-gitlab-group>/argocd-source-lint/lint@v1.3.1
-    inputs:
-      scope: manifests/
+  - component: $CI_SERVER_FQDN/<your-gitlab-group>/argocd-source-lint/lint@v1.4.0
 ```
 
-You don't have to publish the component in the GitLab CI/CD Catalog. A normal `include:` works without Catalog publication.
+GitLab runs merge request pipelines only when the project's own `.gitlab-ci.yml` asks for
+them; rules inside an included component don't count. Without them the job runs in branch
+pipelines, where `CI_MERGE_REQUEST_TARGET_BRANCH_NAME` isn't set, so Applications tracking
+the target branch are checked against that branch instead of the change. Add, for example:
+
+```yaml
+workflow:
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+```
+
+or pass `--target-branch` through the `args` input.
+
+The job publishes a Code Quality report and prints the table.
+
+| Input | Default | Effect |
+| --- | --- | --- |
+| `scope` | `.` | Root of the Git repository, not a subfolder of it |
+| `fail_on_error` | `true` | As `fail-on-error` above |
+| `fail_on_empty` | `true` | As `fail-on-empty` above |
+| `args` | | Extra options, split on spaces. Quote a `*` so the shell doesn't expand it |
+| `stage` | `test` | Stage of the job |
+| `job_name` | `argocd-source-lint` | Name of the job, distinct for each include of the component |
+| `image` | `python:3.11-slim` | Image the job runs in. It needs Python 3.11 or later, and `git` or `apt-get`. Without Internet access, use a mirrored image and set `PIP_INDEX_URL` to your PyPI mirror |
+
+A GitLab job clones the ref being tested, shallow by default (`GIT_DEPTH` is 20 on new
+projects). Applications tracking the merge request's target branch need nothing more. One
+pinned to another branch or a tag comes out as `unverifiable` until that ref is in the clone.
 
 ### pre-commit
+
+The hook needs Python 3.11 or later as pre-commit's default Python.
 
 ```yaml
 repos:
   - repo: https://github.com/gillesl-dev/argocd-source-lint
-    rev: v1.3.1
+    rev: v1.4.0
     hooks:
       - id: argocd-source-lint
 ```
 
-## Development
+## Configuration
 
-Install the project and development dependencies:
+`.argocd-lint.yaml` at the root of the repository. Every key is optional;
+[`.argocd-lint.example.yaml`](./.argocd-lint.example.yaml) shows them all.
+
+| Key | Default | Effect |
+| --- | --- | --- |
+| `scan_roots` | none | Folders where every YAML file should belong to an Application. Without it, `orphan-source` checks nothing, and the output says so |
+| `exclude_paths` | none | Glob patterns of repository paths `orphan-source` ignores, such as `manifests/legacy/**` |
+| `rules` | the severities above | Severity per rule ID: `error`, `warning` or `info`. An unknown rule ID exits with code `2` |
+| `unverifiable_blocks_ci` | `true` | Whether an `unverifiable` finding gives exit code `1` |
+| `repo_urls` | none | Other URLs ArgoCD uses for this repository than the checkout's `origin` remote, such as an SSH host alias or a mirror |
+| `new_git_file_globbing` | `false` | `true` when the ApplicationSet controller runs with `--enable-new-git-file-globbing`, which changes how git `files` generator patterns match |
+| `argocd_instances` | none | Folders that each hold the Applications of a separate ArgoCD instance. Names and destinations are compared only within one instance |
+| `argocd_version` | none | Your ArgoCD version, such as `"3.2.0"`. `unknown-sync-option` and `unknown-resource-hook` then also report values that version doesn't know yet, such as the Application-level `Prune` sync option before 3.4.0 |
+| `known_operators` | none | More operator signatures for `missing-ignore-diff`, added to the built-in ones (see [docs/rules.md](./docs/rules.md#missing-ignore-diff)) |
+
+
+## Limitations
+
+- Helm charts and Kustomize overlays are not rendered. A resource a chart template produces
+  never exists as a file, so no rule sees it. `orphan-source` does follow the local files a
+  `kustomization.yaml` references; remote ones are skipped.
+- A source in another Git repository can't be inspected. It is reported as `info`.
+- The `list`, `git`, `matrix` and `merge` ApplicationSet generators are resolved locally,
+  and the Applications they produce go through every rule. `clusters`, `scmProvider`,
+  `pullRequest` and `plugin` generators, `goTemplate: true`, `templatePatch` and `selector`
+  give `unresolvable-generator` instead, and the files those Applications may deploy are
+  reported by `orphan-source` as `info`.
+- The repository is read as one GitOps tree. A template repository with one tree per
+  cluster gets `duplicate-application-name` for names repeated across trees, unless the
+  trees are listed in `argocd_instances`.
+- Nothing that depends on the live cluster is checked.
+
+## Compared to other tools
+
+None of the tools below documents a rule for orphan sources, missing `ignoreDifferences`,
+phantom targets, or double coverage (checked against their documentation in November 2026).
+`argocd-lint` has rules close to `floating-target-revision`, `project-scope-violation` and
+`duplicate-application-name`; the last one compares names only, not namespace and name.
+
+| | Needs a cluster or a running ArgoCD | Primary purpose |
+| --- | --- | --- |
+| `argocd-source-lint` | No | Static analysis of the Git checkout (see [Rules](#rules)) |
+| [argocd-diff-preview](https://github.com/dag-andersen/argocd-diff-preview) | Starts a throwaway cluster with ArgoCD (needs Docker), or uses an existing ArgoCD | Shows the rendered manifest diff on a pull request |
+| [kubechecks](https://github.com/zapier/kubechecks) | Yes | Schema/policy checks (`kubepug`, `kubeconform`, `conftest`) plus a live-state diff comment on a pull request |
+| [argocd-lint](https://github.com/harchuk/argocd-lint) | No, except its optional server dry run | Best-practice rules for `Application`, `ApplicationSet` and `AppProject`, extensible with Rego |
+| [glint](https://github.com/lukashankeln/glint) | No | Renders Helm and Kustomize, then applies your own CEL policies to ArgoCD Applications, Flux HelmReleases and plain resources |
+| [conftest](https://www.conftest.dev/) / [kubeconform](https://github.com/yannh/kubeconform) | No | Generic OPA policy checks and schema validation, not aware of ArgoCD's semantics. The [CRDs catalog](https://github.com/datreeio/CRDs-catalog) has schemas for ArgoCD's resources |
+
+## Development
 
 ```bash
 uv sync --extra dev
-```
-
-Run the linter locally:
-
-```bash
 uv run argocd-source-lint .
-```
-
-Run the tests:
-
-```bash
 uv run pytest
 ```
 
-To try a version published on TestPyPI:
-
-```bash
-pip install \
-  --index-url https://test.pypi.org/simple/ \
-  --extra-index-url https://pypi.org/simple/ \
-  argocd-source-lint
-```
-
-For implementation details, see [DESIGN.md](./DESIGN.md).
-
-To add a rule or operator signature, see [CONTRIBUTING.md](./CONTRIBUTING.md).
-
-Version history is available in [CHANGELOG.md](./CHANGELOG.md).
+For implementation details, see [DESIGN.md](./DESIGN.md). To add a rule or an operator
+signature, see [CONTRIBUTING.md](./CONTRIBUTING.md).
 
 ## License
 

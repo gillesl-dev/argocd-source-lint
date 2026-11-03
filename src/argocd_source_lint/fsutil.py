@@ -7,46 +7,30 @@ from typing import Any
 from ruamel.yaml import YAML
 from ruamel.yaml.error import YAMLError
 
-# Round-trip (not "safe") mode: it's the only one that keeps line/column
-# info (`.lc`) on the parsed `CommentedMap`/`CommentedSeq`, needed by
-# `loader.py` to populate `Finding.line`. Still behaves as a plain
-# dict/list for every existing `.get()`/iteration call site.
+# Round-trip mode is the only one that keeps line/column info (`.lc`), which
+# `loader.py` needs for `Finding.line`. The results still behave as dict/list.
 _yaml = YAML(typ="rt")
 
-# A YAML anchor referenced twice by a later anchor, N layers deep,
-# expands to 2^N nodes if anything ever fully materializes it (e.g. a
-# naive `str()` on the parsed value), while staying a few hundred
-# bytes on disk ("billion laughs"). ruamel's loader itself is safe (an
-# alias resolves to the *same* object, not a copy: confirmed
-# empirically, not assumed), so parsing never hangs; the risk is
-# entirely downstream, the moment something stringifies/walks the
-# result without knowing it may be densely aliased. Rejecting a
-# document whose *fully expanded* size would be unreasonable, computed
-# via memoized recursion (`is_within_budget`), so this check itself
-# costs one pass over the *distinct* nodes, never the exploded count,
-# closes that off at the one place virtually everything here reads YAML
-# through, rather than defensively re-checking every later call site
-# that stringifies a value (see DESIGN.md "YAML alias bombs").
+# Nested anchors referencing each other expand to 2^N nodes when something
+# like `str()` materializes them ("billion laughs"). ruamel shares the aliased
+# object, so parsing is cheap, but any later walk is not. Documents over this
+# expanded size are rejected at load time (see DESIGN.md).
 _MAX_EXPANDED_NODES = 1_000_000
 
 
 def is_within_budget(node: Any, memo: dict[int, int] | None = None) -> bool:
-    """`False` if `node`, fully expanded, would exceed `_MAX_EXPANDED_NODES`
-    nodes: generous headroom for any real manifest, far below what an
-    alias bomb reaches within a handful of anchor layers. `memo` (keyed by
-    `id()`) makes this one pass over the distinct nodes: an aliased
-    subtree's size is computed once and reused for every later reference
-    to it, exactly the reuse that makes the bomb small on disk in the
-    first place."""
+    """Whether `node`, fully expanded, stays within `_MAX_EXPANDED_NODES` nodes.
+
+    `memo`, keyed by `id()`, sizes each shared subtree once, so the cost is
+    proportional to the distinct nodes, not the expanded count.
+    """
     memo = {} if memo is None else memo
     return _expanded_size(node, memo, _MAX_EXPANDED_NODES) is not None
 
 
-_VISITING = -1  # sentinel: a genuine cycle isn't constructible through a
-# YAML anchor (an alias can only reference an anchor already fully
-# resolved: confirmed empirically, a forward self-reference resolves
-# to `None` instead), but this guards against one anyway rather than
-# trusting that to hold across every YAML feature and library version.
+# Marks a node being visited. A YAML alias can only reference an anchor that is
+# already resolved, so cycles should not occur, but this does not rely on it.
+_VISITING = -1
 
 
 def _expanded_size(node: Any, memo: dict[int, int], budget: int) -> int | None:
@@ -72,15 +56,12 @@ def _expanded_size(node: Any, memo: dict[int, int], budget: int) -> int | None:
 
 
 def walk_tree(directory: Path) -> Iterator[Path]:
-    """Every file and directory under `directory`, breaking a directory
-    symlink/junction cycle instead of following it forever: confirmed
-    to hang otherwise (a junction pointing back at an ancestor, a few
-    KB on disk); neither `Path.rglob` nor even `os.walk(followlinks=
-    False)` protect against it, only a "real" symlink, and a Windows
-    junction isn't one (`Path.is_symlink()` is `False` for it too;
-    see DESIGN.md "A directory symlink/junction cycle"). `.git` is
-    never descended into. Shared by `iter_yaml_files` and the
-    ApplicationSet `git` generator's own directory/file discovery."""
+    """Every file and directory under `directory`, skipping `.git`.
+
+    Stops at already visited directories. A Windows junction is not a
+    symlink to `Path.rglob` or `os.walk(followlinks=False)`, so a junction
+    to an ancestor would loop forever (see DESIGN.md).
+    """
     yield from _walk(directory, set())
 
 
@@ -106,55 +87,63 @@ def _walk(directory: Path, seen: set[Path]) -> Iterator[Path]:
             yield from _walk(entry, seen)
 
 
-def iter_yaml_files(directory: Path, *, recurse: bool = True) -> Iterator[Path]:
-    """`.yaml`/`.yml` files under `directory`. `recurse=False` (ArgoCD's
-    default for a `directory` source without an explicit `recurse: true`,
-    see DESIGN.md) does not descend into subdirectories."""
+def iter_yaml_files(
+    directory: Path, *, recurse: bool = True, suffixes: tuple[str, ...] = (".yaml", ".yml")
+) -> Iterator[Path]:
+    """Files with one of `suffixes` under `directory`.
+
+    `recurse=False`, Argo CD's default for a directory source, stays at the top level.
+    """
     if not recurse:
-        for pattern in ("*.yaml", "*.yml"):
-            for path in directory.glob(pattern):
-                if path.is_file():
-                    yield path
+        for path in directory.iterdir():
+            if path.is_file() and path.name.endswith(suffixes):
+                yield path
         return
 
     for path in walk_tree(directory):
-        if path.is_file() and path.name.endswith((".yaml", ".yml")):
+        if path.is_file() and path.name.endswith(suffixes):
             yield path
 
 
 _LOADED_DOCUMENTS_CACHE: dict[Path, list[dict[str, Any]]] = {}
+_UNREADABLE_ARGOCD_FILES: dict[Path, str] = {}
+
+
+def _looks_like_argocd_manifest(path: Path) -> bool:
+    try:
+        text = path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return False
+    return "argoproj.io/" in text and "{{" not in text
+
+
+def unreadable_argocd_files() -> dict[Path, str]:
+    """Files that mention Argo CD resources but are not valid YAML, with the error."""
+    return dict(_UNREADABLE_ARGOCD_FILES)
 
 
 def load_yaml_documents(path: Path) -> list[dict[str, Any]]:
-    """All valid YAML documents in a file (potentially multi-document). A
-    file that fails to parse (e.g. a Helm template using Go syntax), or
-    a YAML alias bomb that would blow past `is_within_budget`, simply
-    returns an empty list instead of raising or hanging.
+    """Mapping documents in a YAML file, possibly multi-document.
 
-    Cached by resolved path, for the same reason and under the same
-    `clear_caches` reset as `discover_documents` below: before this
-    cache existed, `coverage.py`'s per-Application
-    `covered_documents_for_application` re-parsed that Application's
-    own source directory independently for every rule that reads it
-    (five of them, plus two more via `covered_files_for_application`'s
-    own use of `covered_files_for_source`); confirmed for real, not
-    estimated: 40 Applications x 15 covered files each x 3 rules that
-    actually reached this path in a minimal repro still cost ~4.9s of
-    pure re-parsing. Caching here (rather than only in `coverage.py`'s
-    own `covered_files_for_source`, which stops the redundant *walk* but
-    not the redundant *parse*) also means a file `discover_documents`
-    already parsed for the top-level Application/ApplicationSet/
-    AppProject scan is never re-parsed again when a rule later reads it
-    as covered content."""
+    Unparseable files, such as Helm templates, and documents over the alias
+    budget are dropped. Cached by resolved path until `clear_caches()`,
+    since several rules and discovery passes read the same files.
+    """
     resolved = path.resolve()
     if resolved in _LOADED_DOCUMENTS_CACHE:
         return _LOADED_DOCUMENTS_CACHE[resolved]
 
+    docs: list[Any] = []
     try:
         with path.open("r", encoding="utf-8") as f:
-            docs = list(_yaml.load_all(f))
-    except (YAMLError, UnicodeDecodeError):
-        docs = []
+            for doc in _yaml.load_all(f):
+                docs.append(doc)
+    except (YAMLError, UnicodeDecodeError) as exc:
+        # Documents before the error are kept. A Helm template is expected to
+        # fail; a plain file declaring Argo CD resources is not, so say so.
+        if _looks_like_argocd_manifest(path):
+            first_line = str(exc).strip().splitlines()[0] if str(exc).strip() else ""
+            _UNREADABLE_ARGOCD_FILES[resolved] = first_line or type(exc).__name__
     result = [doc for doc in docs if isinstance(doc, dict) and is_within_budget(doc)]
     _LOADED_DOCUMENTS_CACHE[resolved] = result
     return result
@@ -164,20 +153,12 @@ _DISCOVERED_DOCUMENTS_CACHE: dict[Path, list[tuple[Path, dict[str, Any]]]] = {}
 
 
 def discover_documents(repo_root: Path) -> list[tuple[Path, dict[str, Any]]]:
-    """Every YAML document in the repo, as `(manifest_path, doc)` pairs;
-    shared by the three independent top-level discovery passes
-    (`RawManifestDiscovery`, the ApplicationSet walker,
-    `discover_app_projects`), each of which is only looking for one
-    `kind` and would otherwise re-walk and re-parse every file in the
-    repo to find it. Confirmed to matter for real: 2,000 plain
-    manifests (zero Applications/ApplicationSets/AppProjects among
-    them) cost ~5s across the three independent passes before this
-    cache existed. Cached by `repo_root` for the life of one CLI
-    invocation (`clear_caches`); same reasoning and same risk as
-    `git_context`'s revision cache: safe because nothing here writes to
-    the repo mid-run, and a direct caller bypassing `cli.lint` (every
-    test in this suite does) must call `clear_caches()` itself between
-    two calls if it mutates the repo in between."""
+    """Every YAML document in the repo, as `(manifest_path, doc)` pairs.
+
+    Shared by the Application, ApplicationSet and AppProject discovery
+    passes and cached by `repo_root`. Callers that modify the repo between
+    calls must call `clear_caches()`.
+    """
     if repo_root in _DISCOVERED_DOCUMENTS_CACHE:
         return _DISCOVERED_DOCUMENTS_CACHE[repo_root]
 
@@ -191,9 +172,7 @@ def discover_documents(repo_root: Path) -> list[tuple[Path, dict[str, Any]]]:
 
 
 def clear_caches() -> None:
-    """Resets `discover_documents`' and `load_yaml_documents`' caches:
-    called once at the start of `cli.lint`, so each CLI invocation
-    starts clean rather than either persisting for the life of the
-    process."""
+    """Reset the document caches. Called at the start of each lint run."""
     _DISCOVERED_DOCUMENTS_CACHE.clear()
     _LOADED_DOCUMENTS_CACHE.clear()
+    _UNREADABLE_ARGOCD_FILES.clear()

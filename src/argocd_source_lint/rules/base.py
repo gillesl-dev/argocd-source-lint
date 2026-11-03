@@ -21,9 +21,10 @@ class Rule(ABC):
 
 
 def external_source_finding(rule_id: str, app: Application, source: Source) -> Finding:
-    """Standard `info` finding for a source out of scope v1 (external repo,
-    see DESIGN.md "Mono-repo v1 scope"). Shared by rules that iterate
-    over `git_context.external_path_sources`."""
+    """Build the `info` finding for a source in an external repo.
+
+    External repos are out of scope, see DESIGN.md.
+    """
     return Finding(
         rule_id=rule_id,
         severity=Severity.INFO,

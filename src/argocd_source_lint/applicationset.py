@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import posixpath
 import re
+from collections.abc import Iterator
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -14,8 +16,12 @@ from argocd_source_lint.git_context import (
     materialize_revision,
     revision_matches_checkout,
 )
-from argocd_source_lint.globs import match_glob
-from argocd_source_lint.loader import build_application
+from argocd_source_lint.globs import match_doublestar, match_git_pathspec, match_path
+from argocd_source_lint.loader import (
+    INVALID_MANIFEST_ERRORS,
+    build_application,
+    invalid_reason,
+)
 from argocd_source_lint.models import Application, Finding, Severity
 
 RULE_ID = "unresolvable-generator"
@@ -23,43 +29,44 @@ RULE_ID = "unresolvable-generator"
 
 @dataclass(frozen=True, slots=True)
 class GeneratorContext:
-    """Everything a generator resolver needs besides its own generator
-    dict, threaded unchanged through every level of `_resolve_generator`'s
-    recursion (`matrix`/`merge` calling back into it for each child);
-    bundled here instead of six positional parameters repeated across
-    every one of those functions."""
+    """Per-ApplicationSet state passed unchanged through generator recursion."""
 
     repo_root: Path
     local_origin: str | None
     appset_name: str
     source_file: Path
     severity: Severity
+    new_git_file_globbing: bool
 
 
 # Classic ApplicationSet templating (`{{key}}`, valyala/fasttemplate).
-# `spec.goTemplate: true` switches to Go template syntax instead, which is
-# a different rendering engine entirely and out of scope v1 (see below).
-_PLACEHOLDER_RE = re.compile(r"\{\{\s*([\w.\-]+)\s*\}\}")
+# `spec.goTemplate: true` uses a different engine and is not supported.
+_PLACEHOLDER_RE = re.compile(r"\{\{\s*([\w.\-\[\]]+)\s*\}\}")
 
 _yaml_safe = YAML(typ="safe")
 
 
 def discover(
-    repo_root: Path, local_origin: str | None, severity: Severity
+    repo_root: Path,
+    local_origin: str | None,
+    severity: Severity,
+    *,
+    new_git_file_globbing: bool = False,
 ) -> tuple[list[Application], list[Finding]]:
-    """Expands every `ApplicationSet` in the repo into the `Application`s
-    its generators would produce, so the existing rules apply to them
-    unchanged. A generator this tool can't resolve locally (requires a
-    live cluster/API, or Go-template rendering) produces one `info`
-    finding instead of guessing, following the same principle as an external
-    `Application` source (see DESIGN.md)."""
+    """Expand every ApplicationSet into the Applications its generators produce.
+
+    A generator that cannot be resolved from the local checkout yields one
+    finding instead of a guess, like an external Application source.
+    """
     applications: list[Application] = []
     findings: list[Finding] = []
 
     for manifest_path, doc in discover_documents(repo_root):
         if not _is_application_set(doc):
             continue
-        expanded_apps, doc_findings = _expand(doc, manifest_path, repo_root, local_origin, severity)
+        expanded_apps, doc_findings = _expand(
+            doc, manifest_path, repo_root, local_origin, severity, new_git_file_globbing
+        )
         applications.extend(expanded_apps)
         findings.extend(doc_findings)
 
@@ -78,6 +85,26 @@ def _expand(
     repo_root: Path,
     local_origin: str | None,
     severity: Severity,
+    new_git_file_globbing: bool,
+) -> tuple[list[Application], list[Finding]]:
+    applications, findings = _expand_spec(
+        doc, manifest_path, repo_root, local_origin, severity, new_git_file_globbing
+    )
+    if findings:
+        # Some Applications may be missing: orphan-source must not report the
+        # files they would deploy as errors.
+        paths = _possible_source_paths(doc.get("spec") or {}, local_origin)
+        findings = [f.model_copy(update={"unexpanded_paths": paths}) for f in findings]
+    return applications, findings
+
+
+def _expand_spec(
+    doc: dict[str, Any],
+    manifest_path: Path,
+    repo_root: Path,
+    local_origin: str | None,
+    severity: Severity,
+    new_git_file_globbing: bool,
 ) -> tuple[list[Application], list[Finding]]:
     metadata = doc.get("metadata", {}) or {}
     spec = doc.get("spec", {}) or {}
@@ -91,6 +118,7 @@ def _expand(
         appset_name=metadata.get("name", ""),
         source_file=source_file,
         severity=severity,
+        new_git_file_globbing=new_git_file_globbing,
     )
 
     if spec.get("goTemplate"):
@@ -99,6 +127,15 @@ def _expand(
                 ctx,
                 "`goTemplate: true` (Go template rendering) is out of scope v1 — "
                 "only the classic `{{key}}` substitution is supported.",
+            )
+        ]
+
+    if spec.get("templatePatch"):
+        return [], [
+            _finding(
+                ctx,
+                "`templatePatch` is not supported, so the Applications this ApplicationSet "
+                "generates are not checked.",
             )
         ]
 
@@ -112,12 +149,36 @@ def _expand(
             continue
         param_sets, generator_findings = _resolve_generator(generator, ctx)
         findings.extend(generator_findings)
+        # A generator can carry its own `template`, merged over the spec's.
+        effective_template = _merged(template, _generator_template(generator))
         for params in param_sets:
-            applications.append(
-                _build_generated_application(
-                    template, params, manifest_path, repo_root, appset_namespace
-                )
+            unresolved = _unresolved_placeholders(
+                _checked_fields(_substitute(effective_template, params))
             )
+            if unresolved:
+                findings.append(
+                    _finding(
+                        ctx,
+                        f"template placeholder(s) {', '.join(sorted(unresolved))} get no value "
+                        "from the generator, so the Applications it generates are not checked.",
+                    )
+                )
+                break
+            try:
+                applications.append(
+                    _build_generated_application(
+                        effective_template, params, manifest_path, repo_root, appset_namespace
+                    )
+                )
+            except INVALID_MANIFEST_ERRORS as exc:
+                findings.append(
+                    _finding(
+                        ctx,
+                        f"template renders an invalid Application ({invalid_reason(exc)}), "
+                        "so the Applications it generates are not checked.",
+                    )
+                )
+                break
 
     return applications, findings
 
@@ -157,7 +218,7 @@ def _resolve_generator(
         ]
 
     if "list" in generator:
-        return _resolve_list(generator.get("list") or {}), []
+        return _resolve_list(generator.get("list") or {}, ctx)
     if "git" in generator:
         return _resolve_git(generator.get("git") or {}, ctx)
     if "matrix" in generator:
@@ -175,9 +236,20 @@ def _resolve_generator(
     ]
 
 
-def _resolve_list(list_generator: dict[str, Any]) -> list[dict[str, str]]:
-    elements = list_generator.get("elements") or []
-    return [_flatten_params(element) for element in elements if isinstance(element, dict)]
+def _resolve_list(
+    list_generator: dict[str, Any], ctx: GeneratorContext
+) -> tuple[list[dict[str, str]], list[Finding]]:
+    elements = list(list_generator.get("elements") or [])
+    elements_yaml = list_generator.get("elementsYaml")
+    if elements_yaml:
+        try:
+            parsed = _yaml_safe.load(str(elements_yaml))
+        except YAMLError:
+            parsed = None
+        if not isinstance(parsed, list) or not is_within_budget(parsed):
+            return [], [_finding(ctx, "list generator's `elementsYaml` is not a YAML list.")]
+        elements.extend(parsed)
+    return [_flatten_params(element) for element in elements if isinstance(element, dict)], []
 
 
 def _resolve_git(
@@ -193,19 +265,14 @@ def _resolve_git(
             )
         ]
 
-    # The generator's own `revision` is independent of any generated
-    # Application's `targetRevision` (confirmed against the upstream Git
-    # generator docs). Discovering `directories`/`files` from the
-    # checked-out working tree regardless was a real, silent-wrong-result
-    # gap: a `revision` pinned away from HEAD would enumerate today's
-    # directory structure, not the pinned one. Same snapshot mechanism as
-    # `coverage._resolved_source_root` (DESIGN.md "targetRevision drift"),
-    # reused here rather than a second implementation.
+    # The generator's `revision` is independent of the generated Applications'
+    # `targetRevision` (upstream Git generator docs), so a revision pinned away
+    # from HEAD must enumerate that snapshot, not the working tree. Same
+    # mechanism as `coverage._resolved_source_root` (DESIGN.md).
     revision = git_generator.get("revision") or "HEAD"
     matches_checkout = revision_matches_checkout(ctx.repo_root, revision)
     if matches_checkout is None:
-        # `is None`, not `is False`: a revision that doesn't resolve at
-        # all must never fall through as "matches HEAD" by default.
+        # An unresolvable revision must never be treated as matching HEAD.
         return [], [
             _finding(
                 ctx,
@@ -231,10 +298,12 @@ def _resolve_git(
             ]
         base_root = snapshot_root
 
-    param_sets: list[dict[str, str]] = []
-    param_sets.extend(_resolve_git_directories(base_root, git_generator.get("directories") or []))
-    param_sets.extend(_resolve_git_files(base_root, git_generator.get("files") or []))
-    return param_sets, []
+    # With both set, Argo CD uses `directories` and ignores `files`.
+    directories = git_generator.get("directories") or []
+    if directories:
+        return _resolve_git_directories(base_root, directories), []
+    files = git_generator.get("files") or []
+    return _resolve_git_files(base_root, files, ctx.new_git_file_globbing), []
 
 
 def _resolve_git_directories(repo_root: Path, entries: list[Any]) -> list[dict[str, str]]:
@@ -245,7 +314,7 @@ def _resolve_git_directories(repo_root: Path, entries: list[Any]) -> list[dict[s
         if not isinstance(entry, dict):
             continue
         pattern = str(entry.get("path", ""))
-        matches = {d for d in all_dirs if match_glob(pattern, d)}
+        matches = {d for d in all_dirs if match_path(pattern, d)}
         if entry.get("exclude"):
             excluded |= matches
         else:
@@ -254,14 +323,25 @@ def _resolve_git_directories(repo_root: Path, entries: list[Any]) -> list[dict[s
     return [_directory_params(d) for d in sorted(included - excluded)]
 
 
-def _resolve_git_files(repo_root: Path, entries: list[Any]) -> list[dict[str, str]]:
+def _resolve_git_files(
+    repo_root: Path, entries: list[Any], new_git_file_globbing: bool
+) -> list[dict[str, str]]:
+    # Argo CD's `LsFiles` in util/git/client.go: `git ls-files` by default,
+    # doublestar with the ApplicationSet controller's new globbing flag.
+    match = match_doublestar if new_git_file_globbing else match_git_pathspec
     all_files = _list_local_files(repo_root)
     matched: set[str] = set()
+    excluded: set[str] = set()
     for entry in entries:
         if not isinstance(entry, dict):
             continue
         pattern = str(entry.get("path", ""))
-        matched |= {f for f in all_files if match_glob(pattern, f)}
+        matches = {f for f in all_files if match(pattern, f)}
+        if entry.get("exclude"):
+            excluded |= matches
+        else:
+            matched |= matches
+    matched -= excluded
 
     param_sets: list[dict[str, str]] = []
     for rel_path in sorted(matched):
@@ -269,20 +349,18 @@ def _resolve_git_files(repo_root: Path, entries: list[Any]) -> list[dict[str, st
         if content is None:
             continue
         params = _flatten_params(content)
-        params.update(_directory_params(rel_path))
+        # As in Argo CD, `path` is the directory holding the file, not the file.
+        params.update(_directory_params(posixpath.dirname(rel_path)))
+        filename = posixpath.basename(rel_path)
+        params["path.filename"] = filename
+        params["path.filenameNormalized"] = _normalized(filename)
         param_sets.append(params)
     return param_sets
 
 
-# Real-world matrix uses (environments x regions, clusters x apps) rarely
-# reach even the low hundreds, so this is generous headroom, chosen the same way as
-# fsutil's `_MAX_EXPANDED_NODES`: far below where the cost actually starts
-# to matter. Confirmed for real, not theoretical: two `list` generators of
-# 5,000 small elements each (comfortably under the alias-bomb node budget
-# on their own; that budget catches a densely *aliased* document, not a
-# large but flat one) produced 25,000,000 combinations in ~7s for the
-# combine step alone, before a single generated Application is even built
-# or run through a rule.
+# Real matrices (environments x regions, clusters x apps) rarely reach the
+# low hundreds. The YAML node budget does not bound this: two flat lists of
+# 5,000 elements each pass it but combine into 25 million entries.
 _MAX_MATRIX_COMBINATIONS = 10_000
 
 
@@ -292,11 +370,8 @@ def _resolve_matrix(
     children = matrix_generator.get("generators") or []
 
     if len(children) > 2:
-        # ArgoCD's own matrix generator only supports combining exactly
-        # two child generators: the controller reports an error on more
-        # (see DESIGN.md), it doesn't just behave unpredictably. Guessing
-        # at a 3+-way cartesian product here would report Applications
-        # ArgoCD itself would never actually generate.
+        # The Argo CD controller errors on a matrix with more than two child
+        # generators (see DESIGN.md), so it would generate no Application.
         return [], [
             _finding(
                 ctx,
@@ -308,15 +383,36 @@ def _resolve_matrix(
 
     findings: list[Finding] = []
     param_lists: list[list[dict[str, str]]] = []
+    children = [child for child in children if isinstance(child, dict)]
+    if len(children) < 2:
+        return [], [
+            _finding(
+                ctx, "matrix generator has fewer than 2 child generators, so it is not expanded."
+            )
+        ]
 
-    for child in children:
-        if not isinstance(child, dict):
-            continue
-        params, child_findings = _resolve_generator(child, ctx)
-        findings.extend(child_findings)
-        param_lists.append(params)
+    first, second = children
+    first_params, first_findings = _resolve_generator(first, ctx)
+    findings.extend(first_findings)
+    if _unresolved_placeholders(second):
+        # The second generator uses the first one's parameters (`{{path}}`), so it
+        # is resolved once per entry of the first, as Argo CD does.
+        combined_chained: list[dict[str, str]] = []
+        for entry in first_params:
+            params, child_findings = _resolve_generator(_substitute(second, entry), ctx)
+            findings.extend(child_findings)
+            combined_chained.extend({**entry, **other} for other in params)
+            if len(combined_chained) > _MAX_MATRIX_COMBINATIONS:
+                break
+        else:
+            return combined_chained, findings
+        param_lists = [first_params, combined_chained]
+    else:
+        second_params, second_findings = _resolve_generator(second, ctx)
+        findings.extend(second_findings)
+        param_lists = [first_params, second_params]
 
-    if len(param_lists) < 2 or any(not params for params in param_lists):
+    if any(not params for params in param_lists):
         return [], findings
 
     total_combinations = 1
@@ -370,17 +466,13 @@ def _resolve_merge(
 
     base_params, base_unresolvable = child_results[0]
     if base_unresolvable:
-        # No base entries to match against at all, same reasoning as
-        # matrix's cross product being empty when a factor is empty.
+        # Without base entries there is nothing for later generators to merge into.
         return [], findings
 
-    # Base entries are kept even without a match in a later generator
-    # (see DESIGN.md); a later generator only overrides fields on an
-    # entry whose merge keys already match one from the base, and its
-    # own non-matching entries are discarded rather than added as new
-    # ones. An unresolvable later generator just contributes no override:
-    # its own finding above already flags the gap, so this doesn't
-    # silently drop the (fully known) base entries over it.
+    # Base entries are kept even without a match (see DESIGN.md). A later
+    # generator only overrides entries whose merge keys match, and its other
+    # entries are discarded. An unresolvable later generator contributes no
+    # override; its finding already reports the gap.
     merged = [dict(entry) for entry in base_params]
     by_key = {tuple(entry.get(key, "") for key in merge_keys): entry for entry in merged}
 
@@ -396,8 +488,14 @@ def _resolve_merge(
 
 
 def _list_local_directories(repo_root: Path) -> list[str]:
+    # Argo CD skips hidden directories and everything under them
+    # (`walkDirectoryTree` in reposerver/repository/utils.go).
+    directories = (path.relative_to(repo_root).as_posix() for path in walk_tree(repo_root))
     return [
-        path.relative_to(repo_root).as_posix() for path in walk_tree(repo_root) if path.is_dir()
+        directory
+        for directory in directories
+        if (repo_root / directory).is_dir()
+        and not any(segment.startswith(".") for segment in directory.split("/"))
     ]
 
 
@@ -409,8 +507,19 @@ def _list_local_files(repo_root: Path) -> list[str]:
 
 def _directory_params(rel_path: str) -> dict[str, str]:
     basename = rel_path.rsplit("/", 1)[-1]
-    normalized = re.sub(r"[^A-Za-z0-9-]", "-", basename).strip("-").lower() or "x"
-    return {"path": rel_path, "path.basename": basename, "path.basenameNormalized": normalized}
+    params = {
+        "path": rel_path,
+        "path.basename": basename,
+        "path.basenameNormalized": _normalized(basename),
+    }
+    # `{{path[0]}}`, `{{path[1]}}`...: the path split into segments.
+    for index, segment in enumerate(rel_path.split("/")):
+        params[f"path[{index}]"] = segment
+    return params
+
+
+def _normalized(name: str) -> str:
+    return re.sub(r"[^A-Za-z0-9-]", "-", name).strip("-").lower() or "x"
 
 
 def _load_params_file(path: Path) -> Any:
@@ -421,10 +530,8 @@ def _load_params_file(path: Path) -> Any:
             content = _yaml_safe.load(f)  # valid JSON is also valid YAML
     except (YAMLError, UnicodeDecodeError, OSError):
         return None
-    # This bypasses fsutil.load_yaml_documents' own budget check (a
-    # `files:` generator target isn't a `kind: Application`-shaped
-    # document, so it never goes through that path); checked directly
-    # instead of letting a YAML alias bomb reach _flatten_params' str().
+    # Not loaded through fsutil.load_yaml_documents, so the alias-bomb budget
+    # is checked here before _flatten_params calls str() on the content.
     return content if is_within_budget(content) else None
 
 
@@ -440,6 +547,107 @@ def _flatten_params(obj: Any, prefix: str = "") -> dict[str, str]:
     elif prefix:
         flat[prefix] = "" if obj is None else str(obj)
     return flat
+
+
+def _generator_template(generator: dict[str, Any]) -> dict[str, Any]:
+    for body in generator.values():
+        if isinstance(body, dict) and isinstance(body.get("template"), dict):
+            return body["template"]
+    return {}
+
+
+def _merged(base: Any, override: Any) -> Any:
+    if isinstance(base, dict) and isinstance(override, dict):
+        merged = dict(base)
+        for key, value in override.items():
+            merged[key] = _merged(base.get(key), value) if key in base else value
+        return merged
+    return override if override not in (None, {}) else base
+
+
+def _checked_fields(rendered: dict[str, Any]) -> list[Any]:
+    """The fields the rules read. Others, such as Helm values, may hold their
+    own `{{ }}` syntax that is not an ApplicationSet placeholder."""
+    spec = _mapping(rendered.get("spec"))
+    sources = _template_sources(spec)
+    keys = ("repoURL", "path", "targetRevision", "chart")
+    return [
+        _mapping(rendered.get("metadata")).get("name"),
+        spec.get("destination"),
+        *(source.get(key) for source in sources for key in keys),
+    ]
+
+
+def _mapping(value: Any) -> dict[str, Any]:
+    return value if isinstance(value, dict) else {}
+
+
+def _template_sources(spec: dict[str, Any]) -> list[dict[str, Any]]:
+    sources = spec.get("sources") or ([spec["source"]] if spec.get("source") else [])
+    if not isinstance(sources, list):
+        return []
+    return [source for source in sources if isinstance(source, dict)]
+
+
+def _possible_source_paths(spec: dict[str, Any], local_origin: str | None) -> tuple[str, ...]:
+    """Folders the Applications of `spec` may deploy from, "" meaning anywhere.
+
+    Taken from the template's source paths up to their first placeholder, or
+    from the git generators' paths when a template path starts with one.
+    """
+    spec = _mapping(spec)
+    generators = list(_all_generators(spec.get("generators")))
+    templates = [_mapping(spec.get("template"))]
+    templates += [_generator_template(generator) for generator in generators]
+    generator_paths = {
+        _literal_folder(str(entry.get("path", "")))
+        for generator in generators
+        for git in [_mapping(generator.get("git"))]
+        if is_local_repo_url(str(git.get("repoURL", "")), local_origin)
+        for key in ("directories", "files")
+        for entry in git.get(key) or []
+        if isinstance(entry, dict) and not entry.get("exclude")
+    }
+    paths: set[str] = set()
+    for template in templates:
+        for source in _template_sources(_mapping(template.get("spec"))):
+            repo_url = str(source.get("repoURL", ""))
+            path = source.get("path")
+            if not isinstance(path, str):
+                continue
+            if "{{" not in repo_url and not is_local_repo_url(repo_url, local_origin):
+                continue
+            folder = _literal_folder(path)
+            paths |= {folder} if folder else (generator_paths or {""})
+    return tuple(sorted(paths))
+
+
+def _all_generators(generators: Any) -> Iterator[dict[str, Any]]:
+    for generator in generators if isinstance(generators, list) else []:
+        if not isinstance(generator, dict):
+            continue
+        yield generator
+        for combining in ("matrix", "merge"):
+            yield from _all_generators(_mapping(generator.get(combining)).get("generators"))
+
+
+def _literal_folder(pattern: str) -> str:
+    """The folder of `pattern` before its first placeholder or glob character."""
+    cuts = [index for index in (pattern.find(c) for c in "{*?[") if index != -1]
+    if cuts:
+        pattern = pattern[: min(cuts)].rpartition("/")[0]
+    folder = posixpath.normpath(pattern.strip("/") or ".")
+    return "" if folder == "." else folder
+
+
+def _unresolved_placeholders(value: Any) -> set[str]:
+    if isinstance(value, str):
+        return {f"`{{{{{name}}}}}`" for name in _PLACEHOLDER_RE.findall(value)}
+    if isinstance(value, dict):
+        return set().union(*(_unresolved_placeholders(v) for v in value.values()))
+    if isinstance(value, list):
+        return set().union(*(_unresolved_placeholders(v) for v in value))
+    return set()
 
 
 def _substitute(value: Any, params: dict[str, str]) -> Any:

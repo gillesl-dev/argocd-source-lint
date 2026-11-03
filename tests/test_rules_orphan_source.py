@@ -67,10 +67,6 @@ spec:
 
 
 def test_mixed_local_and_external_sources_still_covers_the_local_source(git_repo):
-    """A mixed `spec.sources` Application (one local source + one external
-    source) must not be treated as entirely multi-repo: the local source
-    must stay covered normally, only the external source is flagged as out
-    of scope."""
     repo_root = git_repo(
         {
             ".argocd-lint.yaml": "scan_roots:\n  - manifests/\n",
@@ -126,9 +122,8 @@ def test_exclude_paths_suppresses_orphan_finding(fixture_repo):
 
 
 def test_exclude_paths_is_case_sensitive(fixture_repo):
-    """A repo checked out on Linux CI is case-sensitive; `exclude_paths`
-    must behave the same on Windows, not silently over-match via
-    `fnmatch`'s case-folding (see coverage.py/orphan_source.py)."""
+    """CI checkouts on Linux are case-sensitive, so `exclude_paths` must not
+    over-match on Windows through `fnmatch`'s case-folding."""
     repo_root = fixture_repo("bad_orphan_source")
     (repo_root / ".argocd-lint.yaml").write_text(
         "scan_roots:\n  - manifests/\nexclude_paths:\n  - manifests/ORPHANED/**\n",
@@ -142,8 +137,8 @@ def test_exclude_paths_is_case_sensitive(fixture_repo):
 
 
 def test_helm_ref_value_file_is_treated_as_covered(git_repo):
-    """Very common real-world pattern: external Helm chart + values.yaml
-    referenced via $values, with no local `path` source at all."""
+    """Common pattern: an external Helm chart with a local values.yaml referenced
+    via $values, and no local `path` source at all."""
     repo_root = git_repo(
         {
             ".argocd-lint.yaml": "scan_roots:\n  - applications/\n",
@@ -174,8 +169,8 @@ spec:
 
 
 def test_source_without_directory_block_does_not_cover_nested_subdirectories(git_repo):
-    """ArgoCD's real default for a `directory` source: `recurse: false`,
-    so only the files at the root level of `path` are covered."""
+    """ArgoCD's default for a `directory` source is `recurse: false`: only files
+    at the root of `path` are covered."""
     repo_root = git_repo(
         {
             ".argocd-lint.yaml": "scan_roots:\n  - manifests/\n",
@@ -229,8 +224,6 @@ spec:
 
 
 def test_directory_include_masks_files_outside_the_pattern(git_repo):
-    """Reproduces exactly the real `airflow-app.yaml` case: a restrictive
-    `include`, so a file in the same directory stays uncovered."""
     repo_root = git_repo(
         {
             ".argocd-lint.yaml": "scan_roots:\n  - applications/\n",
@@ -259,12 +252,9 @@ spec:
 
 
 def test_directory_exclude_suppresses_coverage_of_matched_file(git_repo):
-    """Reproduces the real app-of-apps pattern of `bootstrap-apps.yaml`:
-    `exclude` removes the file from ITS OWN coverage (ArgoCD can't deploy
-    itself). `other-app.yaml`, on the other hand, stays covered via
-    `include: '*.yaml'`. The uncovered root file is an unavoidable
-    structural case of this pattern, not a bug: the `# argocd-lint:ignore`
-    escape hatch exists precisely for this."""
+    """App-of-apps pattern: `exclude` keeps the bootstrap file out of its own
+    coverage (ArgoCD can't deploy itself), so only `# argocd-lint:ignore` clears
+    it, while `other-app.yaml` stays covered via `include: '*.yaml'`."""
     repo_root = git_repo(
         {
             ".argocd-lint.yaml": "scan_roots:\n  - bootstrap/argocd-apps/\n",
@@ -334,10 +324,8 @@ spec:
 
 
 def test_kustomize_directory_with_fully_referenced_resources_has_no_finding(git_repo):
-    """A Kustomize overlay is no longer a black box (see DESIGN.md): every
-    file actually listed in `kustomization.yaml` (however deep the
-    `resources:` chain goes) is covered, so a fully-referenced overlay
-    still reports nothing."""
+    """Every file listed in `kustomization.yaml`, however deep the `resources:`
+    chain, counts as covered (see DESIGN.md)."""
     repo_root = git_repo(
         {
             ".argocd-lint.yaml": "scan_roots:\n  - manifests/\n",
@@ -363,9 +351,8 @@ spec:
 
 
 def test_kustomize_file_not_in_resources_is_flagged_as_orphan(git_repo):
-    """The other side of the same coin: a manifest sitting in the overlay
-    directory but never listed in `resources:` is a real orphan, exactly
-    like a plain directory source; Kustomize no longer masks this."""
+    """A manifest in the overlay directory but missing from `resources:` is an
+    orphan, as in a plain directory source."""
     repo_root = git_repo(
         {
             ".argocd-lint.yaml": "scan_roots:\n  - manifests/\n",
@@ -414,3 +401,29 @@ spec:
     findings = _run_orphan_source(repo_root)
 
     assert findings == []
+
+
+def test_value_file_outside_the_chart_counts_as_covered(git_repo):
+    repo_root = git_repo(
+        {
+            ".argocd-lint.yaml": "scan_roots:\n  - envs/\n",
+            "bootstrap/argocd-apps/web.yaml": """\
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: web
+spec:
+  source:
+    repoURL: https://example.invalid/repo.git
+    targetRevision: HEAD
+    path: charts/web
+    helm:
+      valueFiles:
+        - ../../envs/prod/web/values.yaml
+""",
+            "charts/web/Chart.yaml": "apiVersion: v2\nname: web\nversion: 0.1.0\n",
+            "envs/prod/web/values.yaml": "replicaCount: 2\n",
+        }
+    )
+
+    assert _run_orphan_source(repo_root) == []

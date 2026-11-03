@@ -10,7 +10,7 @@ import pytest
 FIXTURES_DIR = Path(__file__).parent / "fixtures"
 
 # Must match the `repoURL` declared in the fixtures' Application manifests
-# so they are classified as mono-repo (see DESIGN.md).
+# so they are classified as this repository (see DESIGN.md).
 DEFAULT_ORIGIN_URL = "https://example.invalid/repo.git"
 
 
@@ -29,9 +29,8 @@ def _init_git_repo(repo_root: Path, origin_url: str) -> None:
 
 @pytest.fixture
 def git_repo(tmp_path: Path) -> Callable[..., Path]:
-    """Builds a real mini Git repo in tmp_path from a {relative path:
-    content} mapping, with an `origin` remote (no filesystem mocks: a
-    real `git init` as a fixture)."""
+    """Real Git repo in tmp_path built from a {relative path: content}
+    mapping, with an `origin` remote."""
 
     def _make(files: dict[str, str], origin_url: str = DEFAULT_ORIGIN_URL) -> Path:
         repo_root = tmp_path
@@ -90,3 +89,10 @@ def fixture_repo(tmp_path: Path) -> Callable[..., Path]:
         return repo_root
 
     return _make
+
+
+@pytest.fixture(autouse=True)
+def _no_ci_target_branch(monkeypatch):
+    """CI sets these on pull requests; tests must not depend on the event."""
+    monkeypatch.delenv("GITHUB_BASE_REF", raising=False)
+    monkeypatch.delenv("CI_MERGE_REQUEST_TARGET_BRANCH_NAME", raising=False)

@@ -1,22 +1,13 @@
-# Community signature pack for the missing-ignore-diff rule. Adding an
-# operator here is a plain YAML PR, never a code change: the rule engine
-# (rules/missing_ignore_diff.py) is entirely generic.
+# Operator signatures for the missing-ignore-diff rule. The rule is generic,
+# so supporting a new operator only needs an entry here.
 #
-# - crd_trigger : "<group>/<Kind>" of the CRD that triggers the check.
-# - name_from   : dotted path to the name to extract from the found CRD
-#                 instance (e.g. metadata.name).
-# - name_from_each : optional dotted path to a mapping on the same CRD
-#                 instance (e.g. a Zalando postgresql resource's
-#                 spec.users): when set, expect_ignore_on is evaluated
-#                 once per key of that mapping, with {user} bound to the
-#                 key on top of {name}. Omit it for the common case of a
-#                 single derived name per instance.
-# - expect_ignore_on : expected derived resources, with a `name_pattern`
-#                 templated by `{name}` (the name resolved via
-#                 `name_from`) and, when `name_from_each` is set, `{user}`
-#                 too. An Application with `selfHeal: true` that has an
-#                 instance of `crd_trigger` but no `ignoreDifferences`
-#                 matching one of these resources is flagged.
+# - crd_trigger: "<group>/<Kind>" of the custom resource that triggers the check.
+# - name_from: dotted path to the name in that resource, such as metadata.name.
+# - name_from_each: optional dotted path to a mapping in the same resource.
+#     expect_ignore_on is then evaluated once per key, with {user} bound to it.
+# - expect_ignore_on: derived resources, each with a name_pattern using
+#     {name} and, with name_from_each, {user}. A selfHeal Application that
+#     deploys crd_trigger without a matching ignoreDifferences is flagged.
 
 - crd_trigger: postgresql.cnpg.io/Cluster
   name_from: metadata.name
@@ -44,21 +35,18 @@
     - kind: Secret
       name_pattern: "{name}-default-user"
 
-# Only generates a Secret for spec.authentication.type "scram-sha-512"
-# or "tls": an ACL-only or "tls-external" KafkaUser never gets one, so
-# this can false-positive on those. missing-ignore-diff is warning-only
-# and heuristic by nature (see rules/missing_ignore_diff.py) precisely
-# because a signature can't express that kind of conditional trigger.
+# Strimzi only creates the Secret for spec.authentication.type "scram-sha-512"
+# or "tls", so this can false-positive on other KafkaUsers. Signatures cannot
+# express conditions, which is why the rule defaults to warning.
 - crd_trigger: kafka.strimzi.io/KafkaUser
   name_from: metadata.name
   expect_ignore_on:
     - kind: Secret
       name_pattern: "{name}"
 
-# One Secret per entry in spec.users (confirmed against the operator's
-# own docs, not assumed): "{username}.{clustername}.credentials.postgresql.acid.zalan.do".
-# The cross-namespace username variant ("{namespace}.{username}...") is
-# a rarer edge case, not covered here.
+# One Secret per spec.users entry, per the Zalando operator docs:
+# "{username}.{clustername}.credentials.postgresql.acid.zalan.do".
+# The cross-namespace "{namespace}.{username}..." form is not covered.
 - crd_trigger: acid.zalan.do/postgresql
   name_from: metadata.name
   name_from_each: spec.users
@@ -66,22 +54,17 @@
     - kind: Secret
       name_pattern: "{user}.{name}.credentials.postgresql.acid.zalan.do"
 
-# Only the default spec.bootstrapAdmin behavior (no explicit secret
-# override) produces this derived name, confirmed against the
-# official Keycloak Operator docs. Same conditional-trigger limitation
-# as the KafkaUser entry above: a custom bootstrapAdmin secret isn't
-# covered.
+# Name used by the default spec.bootstrapAdmin, per the Keycloak Operator
+# docs. A custom bootstrapAdmin secret is not covered.
 - crd_trigger: k8s.keycloak.org/Keycloak
   name_from: metadata.name
   expect_ignore_on:
     - kind: Secret
       name_pattern: "{name}-initial-admin"
 
-# spec.target.name defaults to the ExternalSecret's own metadata.name
-# when omitted (confirmed against the official API reference); an
-# explicit override isn't covered, a false negative rather than a
-# guess. Documented as a real ArgoCD/ESO footgun by Akuity's own
-# support KB, not assumed.
+# spec.target.name defaults to metadata.name (External Secrets API reference).
+# An explicit target name is not covered. The selfHeal conflict is
+# documented in Akuity's support knowledge base.
 - crd_trigger: external-secrets.io/ExternalSecret
   name_from: metadata.name
   expect_ignore_on:

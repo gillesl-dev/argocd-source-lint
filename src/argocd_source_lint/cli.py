@@ -1,13 +1,16 @@
 from __future__ import annotations
 
+import os
 import sys
 from enum import Enum
 from pathlib import Path
+from typing import NoReturn
 
 import typer
 from pydantic import ValidationError
 from rich.console import Console
 from rich.markup import escape
+from ruamel.yaml.error import YAMLError
 
 from argocd_source_lint import applicationset, tool_version
 from argocd_source_lint.baseline import (
@@ -19,12 +22,25 @@ from argocd_source_lint.baseline import (
 )
 from argocd_source_lint.coverage import clear_caches as clear_coverage_cache
 from argocd_source_lint.fsutil import clear_caches as clear_discovery_cache
+from argocd_source_lint.fsutil import unreadable_argocd_files
 from argocd_source_lint.git_context import clear_caches as clear_git_caches
-from argocd_source_lint.git_context import get_origin_url, is_git_available
+from argocd_source_lint.git_context import (
+    get_origin_url,
+    is_git_available,
+    is_local_repo_url,
+    set_repo_urls,
+    treat_branch_as_checkout,
+)
 from argocd_source_lint.loader import RawManifestDiscovery
 from argocd_source_lint.models import Application, Finding, Severity
-from argocd_source_lint.policy import Policy, load_policy
-from argocd_source_lint.reporters import gitlab_codequality, json_report, junit, sarif
+from argocd_source_lint.policy import (
+    DEFAULT_RULE_SEVERITIES,
+    RULE_DESCRIPTIONS,
+    RULES_DOC_URL,
+    Policy,
+    load_policy,
+)
+from argocd_source_lint.reporters import github, gitlab_codequality, json_report, junit, sarif
 from argocd_source_lint.reporters.safe_text import visible_controls
 from argocd_source_lint.reporters.table import render_findings as render_table
 from argocd_source_lint.reporters.table import render_info_summary
@@ -42,16 +58,23 @@ from argocd_source_lint.rules.malformed_ignore_diff_pointer import (
 )
 from argocd_source_lint.rules.malformed_sync_wave import MalformedSyncWaveRule
 from argocd_source_lint.rules.missing_ignore_diff import MissingIgnoreDiffRule
-from argocd_source_lint.rules.orphan_source import OrphanSourceRule
+from argocd_source_lint.rules.orphan_source import OrphanSourceRule, soften_for_unexpanded_appsets
 from argocd_source_lint.rules.phantom_target import PhantomTargetRule
 from argocd_source_lint.rules.project_scope import ProjectScopeViolationRule
 from argocd_source_lint.rules.revision_mismatch import RevisionMismatchRule
 from argocd_source_lint.rules.sync_validation_disabled import SyncValidationDisabledRule
 from argocd_source_lint.rules.unknown_resource_hook import UnknownResourceHookRule
 from argocd_source_lint.rules.unknown_sync_option import UnknownSyncOptionRule
+from argocd_source_lint.suppressions import (
+    ANNOTATION_PREFIX,
+    annotation_problems,
+    split_by_annotations,
+)
 
 app = typer.Typer(add_completion=False, no_args_is_help=True)
-console = Console()
+# Off a terminal, as in CI logs, rich falls back to 80 columns and truncates
+# rule IDs and paths. COLUMNS still wins when set.
+console = Console(width=None if sys.stdout.isatty() or "COLUMNS" in os.environ else 200)
 err_console = Console(stderr=True)
 
 RULES: list[Rule] = [
@@ -90,11 +113,21 @@ class OutputFormat(str, Enum):
     SARIF = "sarif"
     GITLAB_CODEQUALITY = "gitlab-codequality"
     JUNIT = "junit"
+    GITHUB = "github"
 
 
 def _print_version_and_exit(show: bool) -> None:
     if show:
         console.print(tool_version())
+        raise typer.Exit()
+
+
+def _print_rules_and_exit(show: bool) -> None:
+    if show:
+        for rule_id, description in RULE_DESCRIPTIONS.items():
+            severity = DEFAULT_RULE_SEVERITIES[rule_id].value
+            print(f"{rule_id:<37} {severity:<8} {description}")
+        print(f"\nDetails: {RULES_DOC_URL}")
         raise typer.Exit()
 
 
@@ -107,6 +140,13 @@ def lint(
         callback=_print_version_and_exit,
         is_eager=True,
         help="Show the version and exit.",
+    ),
+    list_rules: bool = typer.Option(
+        False,
+        "--list-rules",
+        callback=_print_rules_and_exit,
+        is_eager=True,
+        help="List every rule with its default severity and exit.",
     ),
     format: OutputFormat = typer.Option(OutputFormat.TABLE, "--format", "-f", help="Report format"),
     output: Path | None = typer.Option(
@@ -133,8 +173,29 @@ def lint(
             "Other formats always include them."
         ),
     ),
+    only: list[str] | None = typer.Option(
+        None, "--only", help="Run only this rule. Repeat for several rules."
+    ),
+    skip: list[str] | None = typer.Option(
+        None, "--skip", help="Don't run this rule. Repeat for several rules."
+    ),
+    target_branch: str | None = typer.Option(
+        None,
+        "--target-branch",
+        envvar=["GITHUB_BASE_REF", "CI_MERGE_REQUEST_TARGET_BRANCH_NAME"],
+        help=(
+            "Branch the change will be merged into. Applications tracking it are checked "
+            "against the checkout instead of the branch. Read from GITHUB_BASE_REF or "
+            "CI_MERGE_REQUEST_TARGET_BRANCH_NAME when set."
+        ),
+    ),
 ) -> None:
     """Analyze the repo's ArgoCD Applications and report detected issues."""
+    selected_rules = _selected_rules(only or [], skip or [])
+    if update_baseline and (only or skip):
+        # A baseline written from a subset of rules would drop every other entry.
+        console.print("[red]--write-baseline can't be combined with --only or --skip.[/red]")
+        raise typer.Exit(code=2)
     repo_root = path.resolve()
     if not repo_root.is_dir():
         console.print(f"[red]Path not found: {repo_root}[/red]")
@@ -142,15 +203,14 @@ def lint(
 
     if not is_git_available():
         console.print(
-            "[red]`git` was not found on PATH.[/red] Every rule here resolves a "
-            "source through it (revision lookups, tree listings) -- without it, "
-            "results silently degrade into false positives instead of erroring, "
-            "rather than the other way around. Install it (e.g. `apt-get install "
-            "-y git` in a minimal container image) and try again."
+            "[red]`git` was not found on PATH.[/red] The rules resolve every "
+            "source through it. Install it (for example `apt-get install -y git` "
+            "in a slim container image) and try again."
         )
         raise typer.Exit(code=2)
 
     clear_git_caches()
+    treat_branch_as_checkout(target_branch or None)
     clear_discovery_cache()
     clear_coverage_cache()
     try:
@@ -166,23 +226,44 @@ def lint(
                 f"{escape(visible_controls(message))}"
             )
         raise typer.Exit(code=2) from None
-    applications = RawManifestDiscovery().discover(repo_root)
+    except UNREADABLE_FILE_ERRORS as exc:
+        _exit_unreadable(repo_root / ".argocd-lint.yaml", exc)
+    set_repo_urls(policy.repo_urls)
+    discovery = RawManifestDiscovery()
+    applications = discovery.discover(repo_root)
     local_origin = get_origin_url(repo_root)
 
     generated_apps, findings = applicationset.discover(
-        repo_root, local_origin, policy.rules.get(applicationset.RULE_ID, Severity.INFO)
+        repo_root,
+        local_origin,
+        policy.rules.get(applicationset.RULE_ID, Severity.INFO),
+        new_git_file_globbing=policy.new_git_file_globbing,
     )
     applications += generated_apps
 
+    unexpanded = [finding for finding in findings if finding.unexpanded_paths]
+    findings = [finding for finding in findings if finding.rule_id in selected_rules]
     for rule in RULES:
-        findings.extend(rule.check(applications, repo_root, policy, local_origin))
+        if rule.rule_id in selected_rules:
+            findings.extend(rule.check(applications, repo_root, policy, local_origin))
+    findings = soften_for_unexpanded_appsets(findings, unexpanded)
+
+    findings, annotated = split_by_annotations(findings, applications)
+    if annotated:
+        err_console.print(
+            f"[dim]{len(annotated)} finding(s) suppressed by "
+            f"{ANNOTATION_PREFIX}<rule> annotations[/dim]"
+        )
 
     if update_baseline:
         baseline_file = write_baseline(repo_root, findings)
         console.print(f"[green]{len(findings)}[/green] finding(s) accepted into {baseline_file}")
         raise typer.Exit(code=0)
 
-    baseline = load_baseline(repo_root)
+    try:
+        baseline = load_baseline(repo_root)
+    except UNREADABLE_FILE_ERRORS as exc:
+        _exit_unreadable(repo_root / DEFAULT_BASELINE_FILENAME, exc)
     new_findings, known_findings = split_by_baseline(findings, baseline)
     if known_findings:
         err_console.print(
@@ -193,14 +274,16 @@ def lint(
     stale = stale_baseline_entries(findings, baseline)
     if stale:
         err_console.print(
-            f"[yellow]{len(stale)} baseline entrie(s) no longer match any "
-            "finding — re-run --write-baseline to drop them[/yellow]"
+            f"[yellow]{len(stale)} baseline entry(ies) no longer match any "
+            "finding. Re-run --write-baseline to drop them.[/yellow]"
         )
 
-    notices = _skipped_check_notices(applications, repo_root, policy)
+    notices = _skipped_check_notices(
+        applications, repo_root, policy, selected_rules, discovery.skipped, local_origin
+    )
     _report(format, new_findings, applications, repo_root, output, notices, show_info)
     if format != OutputFormat.TABLE:
-        # stderr, so a JSON/SARIF/... report on stdout stays parseable.
+        # On stderr, so a machine-readable report on stdout stays parseable.
         for notice in notices:
             err_console.print(f"[yellow]{notice}[/yellow]")
 
@@ -209,14 +292,63 @@ def lint(
     raise typer.Exit(code=_exit_code(new_findings, policy))
 
 
+# A config or baseline file that isn't valid YAML, or has the wrong shape.
+UNREADABLE_FILE_ERRORS = (YAMLError, UnicodeDecodeError, ValueError)
+
+
+def _exit_unreadable(path: Path, exc: Exception) -> NoReturn:
+    reason = str(exc).splitlines()[0] if str(exc) else type(exc).__name__
+    console.print(f"[red]Can't read {path}:[/red] {escape(visible_controls(reason))}")
+    raise typer.Exit(code=2)
+
+
+def _selected_rules(only: list[str], skip: list[str]) -> set[str]:
+    known = set(DEFAULT_RULE_SEVERITIES)
+    unknown = sorted(set(only + skip) - known)
+    if unknown:
+        names = ", ".join(escape(visible_controls(rule_id)) for rule_id in unknown)
+        console.print(f"[red]Unknown rule(s): {names}.[/red] See --list-rules.")
+        raise typer.Exit(code=2)
+    return (set(only) if only else known) - set(skip)
+
+
 def _skipped_check_notices(
-    applications: list[Application], repo_root: Path, policy: Policy
+    applications: list[Application],
+    repo_root: Path,
+    policy: Policy,
+    selected_rules: set[str],
+    skipped_manifests: list[tuple[Path, str]],
+    local_origin: str | None,
 ) -> list[str]:
-    """Checks that silently did nothing, so a quiet report isn't mistaken
-    for a clean one. Already markup-escaped."""
-    notices = []
+    """Notices for checks that did nothing, so a quiet report is not read as clean.
+
+    The returned strings are already markup-escaped.
+    """
+    notices = annotation_problems(applications, set(DEFAULT_RULE_SEVERITIES))
+    for path, reason in sorted(unreadable_argocd_files().items()):
+        shown = path.relative_to(repo_root) if path.is_relative_to(repo_root) else path
+        notices.append(
+            f"`{escape(visible_controls(shown.as_posix()))}` is not valid YAML "
+            f"({escape(visible_controls(reason))}), so the Argo CD resources in it "
+            "may not have been checked."
+        )
+    for manifest, reason in skipped_manifests:
+        notices.append(
+            f"`{escape(visible_controls(manifest.as_posix()))}` is not a valid Application "
+            f"({escape(visible_controls(reason))}), so it was not checked."
+        )
     if not applications:
         notices.append(NO_APPLICATION_WARNING)
+    path_sources = [s for app in applications for s in app.sources if s.path is not None]
+    if path_sources and not any(is_local_repo_url(s.repo_url, local_origin) for s in path_sources):
+        origin = escape(visible_controls(local_origin or "none"))
+        notices.append(
+            f"No Application source points to this repository (origin: `{origin}`), so "
+            "every source was treated as external. If ArgoCD reaches it under another URL, "
+            "list that URL under repo_urls in .argocd-lint.yaml."
+        )
+    if "orphan-source" not in selected_rules:
+        return notices
     if not policy.scan_roots:
         notices.append(ORPHAN_SOURCE_SKIPPED_NOTICE)
     for scan_root in policy.scan_roots:
@@ -247,6 +379,8 @@ def _report(
         text = sarif.render_findings(findings)
     elif output_format == OutputFormat.JUNIT:
         text = junit.render_findings(findings)
+    elif output_format == OutputFormat.GITHUB:
+        text = github.render_findings(findings)
     else:
         text = gitlab_codequality.render_findings(findings)
 
@@ -257,9 +391,11 @@ def _report(
 
 
 def _write_utf8_to_stdout(text: str) -> None:
-    """`print()` encodes with stdout's own encoding, cp1252 for a redirected
-    stdout on Windows, while JUnit declares UTF-8 and JSON/SARIF consumers
-    expect it: a `—` came out as the single byte 0x97."""
+    """Write `text` to stdout as UTF-8 whatever the console encoding is.
+
+    `print()` uses stdout's encoding, cp1252 when redirected on Windows, but
+    JUnit declares UTF-8 and JSON/SARIF consumers expect it.
+    """
     buffer = getattr(sys.stdout, "buffer", None)
     if buffer is None:
         print(text)
@@ -300,8 +436,8 @@ def _render_table_body(
         target.print(f"[yellow]{notice}[/yellow]")
     if notices:
         target.print()
-    # One external Helm chart alone yields 7 identical infos, one per rule:
-    # summarized unless asked for (see render_info_summary).
+    # A single external Helm chart yields one identical info per rule, so
+    # infos are summarized unless --show-info is set.
     hidden = [] if show_info else [f for f in findings if f.severity == Severity.INFO]
     listed = findings if show_info else [f for f in findings if f.severity != Severity.INFO]
     # "No issues detected" with no Application would read as a clean

@@ -5,8 +5,8 @@ from collections import defaultdict
 from pathlib import Path
 
 from argocd_source_lint.app_projects import discover_app_projects
-from argocd_source_lint.git_context import normalize_repo_url
-from argocd_source_lint.globs import match_glob
+from argocd_source_lint.git_context import argo_normalized_git_url
+from argocd_source_lint.globs import expand_braces, match_glob
 from argocd_source_lint.models import (
     Application,
     AppProject,
@@ -21,14 +21,12 @@ RULE_ID = "project-scope-violation"
 
 
 class ProjectScopeViolationRule(Rule):
-    """An Application's `spec.project` restricts which repos it may sync
-    from and which destinations it may sync to
-    (`AppProject.spec.sourceRepos`/`destinations`); ArgoCD refuses to
-    sync outside that scope. From a Git-only point of view that failure
-    is silent: nothing in the repo itself looks wrong, it only shows up
-    as a live Application condition once ArgoCD tries. Fully static:
-    string/glob matching against manifests already in the repo, no
-    cluster access needed (see DESIGN.md)."""
+    """Detect sources or destinations not permitted by the Application's AppProject.
+
+    Argo CD refuses to sync outside `sourceRepos` and `destinations`, but
+    the refusal only appears as a live Application condition, never in the
+    repo. Only AppProjects declared in this repo are checked (see DESIGN.md).
+    """
 
     rule_id = RULE_ID
 
@@ -48,8 +46,8 @@ class ProjectScopeViolationRule(Rule):
         for app in applications:
             candidates = projects_by_name.get(app.project, [])
             if len(candidates) > 1:
-                # Checking against whichever was read last reported
-                # Applications against another folder's AppProject.
+                # Picking one would check some Applications against
+                # another folder's AppProject.
                 files = ", ".join(sorted(p.source_file.as_posix() for p in candidates))
                 findings.append(
                     _info(
@@ -61,10 +59,8 @@ class ProjectScopeViolationRule(Rule):
                 continue
             project = candidates[0] if candidates else None
             if project is None:
-                # "default" not found in the repo: assumed to be
-                # ArgoCD's own auto-created, permissive one; flagging
-                # it would be noise on the overwhelming majority of
-                # repos that never declare it at all.
+                # Argo CD auto-creates a permissive "default" project, and
+                # most repos never declare it.
                 if app.project != "default":
                     findings.append(
                         _info(
@@ -114,7 +110,7 @@ def _check_source_repos(app: Application, project: AppProject, severity: Severit
 
 def _check_destination(app: Application, project: AppProject, severity: Severity) -> list[Finding]:
     if app.destination_server is None and app.destination_name is None:
-        return []  # nothing declared to compare, not this rule's business
+        return []
 
     if not project.destinations:
         return [
@@ -122,7 +118,11 @@ def _check_destination(app: Application, project: AppProject, severity: Severity
                 app, severity, f"AppProject `{project.name}` declares no `destinations` at all."
             )
         ]
-    if any((d.server or d.name or d.namespace or "").startswith("!") for d in project.destinations):
+    if any(
+        (field or "").startswith("!")
+        for d in project.destinations
+        for field in (d.server, d.name, d.namespace)
+    ):
         return [
             _info(
                 app,
@@ -176,33 +176,34 @@ def _destination_matches(app: Application, destination: AppProjectDestination) -
     )
     if not (server_ok or name_ok):
         return False
-    if destination.namespace is None:
-        return True
-    return _destination_field_matches(destination.namespace, app.destination_namespace or "")
+    # An entry without `namespace` only allows an empty one, as in Argo CD.
+    return _destination_field_matches(destination.namespace or "", app.destination_namespace or "")
 
 
 def _source_repo_matches(pattern: str, repo_url: str) -> bool:
-    """ArgoCD's sourceRepos matching, confirmed against
-    `AppProject.IsSourcePermitted`'s actual source: a bare `*` always
-    matches unconditionally (bypasses the glob entirely, a special case
-    in ArgoCD's own `globMatch` wrapper); otherwise a `/`-segment-bounded
-    glob (`*` within one segment, `**` crosses) against both sides
-    normalized the same way `is_local_repo_url` already does elsewhere
-    in this tool, so a harmless URL-form difference (ssh vs https,
-    trailing `.git`) isn't a false violation."""
+    """Match a repo URL against a `sourceRepos` pattern like `AppProject.IsSourcePermitted`.
+
+    A bare `*` matches anything. Otherwise the glob is `/`-segment-bounded
+    (`**` crosses segments). Both sides are normalized as Argo CD does, which
+    drops `.git` and the case but keeps the scheme: an `https://` pattern
+    doesn't permit the `git@` URL of the same repository.
+    """
     if pattern == "*":
         return True
-    return match_glob(normalize_repo_url(pattern), normalize_repo_url(repo_url))
+    return match_glob(argo_normalized_git_url(pattern), argo_normalized_git_url(repo_url))
 
 
 def _destination_field_matches(pattern: str, value: str) -> bool:
-    """ArgoCD's destinations matching (`server`/`name`/`namespace`),
-    confirmed against `AppProject.isDestinationMatched`'s actual source:
-    an *unbounded* glob, no `/`-segment-awareness, unlike sourceRepos.
-    `fnmatchcase` (not `fnmatch`, which lowercases on Windows) to stay
-    correct regardless of the host OS: a namespace/server/cluster name
-    is case-sensitive data, not a filesystem path."""
-    return fnmatch.fnmatchcase(value, pattern)
+    """Match a destination field like `AppProject.isDestinationMatched`.
+
+    Unlike sourceRepos, the glob is not bounded by `/`, and `{a,b}` works.
+    Uses `fnmatchcase` because `fnmatch` lowercases on Windows and these
+    values are case-sensitive.
+    """
+    alternatives = expand_braces(pattern)
+    if alternatives is None:
+        return True  # too large to expand: no false violation
+    return any(fnmatch.fnmatchcase(value, p) for p in alternatives)
 
 
 def _finding(app: Application, severity: Severity, message: str) -> Finding:

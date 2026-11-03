@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 from argocd_source_lint.models import Application, Finding, Severity
@@ -8,21 +9,21 @@ from argocd_source_lint.rules.base import Rule
 
 RULE_ID = "malformed-ignore-diff-jq-expression"
 
+# Argo CD compiles each entry as `del(<expression>)`, so any jq path
+# expression is valid, `getpath(...)` and `select(...) | .a` included. Only
+# a JSON pointer (`/spec/replicas`) or a path missing its leading dot
+# (`spec.replicas`, read as a call to an undefined `spec` function) fails.
+_MISTAKEN_PATH_RE = re.compile(r"\s*(/|[A-Za-z_]\w*[.\[])")
+
 
 class MalformedIgnoreDiffJqExpressionRule(Rule):
-    """`ignoreDifferences[].jqPathExpressions` entries are compiled by
-    ArgoCD's own `gojq` engine as `del(<expression>)`; every real
-    example in ArgoCD's own docs, and every jq path expression in
-    general, starts with `.` (`.spec.replicas`, `.metadata.labels["x"]`).
-    An entry that doesn't is almost certainly a `jsonPointers`-style
-    leading-slash path pasted into the wrong sibling field (`/spec/
-    replicas`), which fails to parse as jq. Confirmed against ArgoCD's
-    own source (`NewIgnoreNormalizer`, `util/argo/normalizers/
-    diff_normalizer.go`): a parse failure aborts building the normalizer
-    for the *whole* `ignoreDifferences` list, not just this one entry:
-    a wider blast radius than `malformed-ignore-diff-pointer`'s, and
-    matching real community reports of `jqPathExpressions` that "apply
-    without errors but don't actually do anything" (see DESIGN.md)."""
+    """Detect a `jqPathExpressions` entry written as a JSON pointer or a dotless path.
+
+    Such an entry is usually a `jsonPointers` path pasted into the wrong
+    field, and fails to compile as jq. A failure aborts the normalizer
+    for the whole `ignoreDifferences` list, with no error shown
+    (`NewIgnoreNormalizer` in util/argo/normalizers/diff_normalizer.go).
+    """
 
     rule_id = RULE_ID
 
@@ -39,7 +40,7 @@ class MalformedIgnoreDiffJqExpressionRule(Rule):
         for app in applications:
             for rule in app.ignore_differences:
                 for expression in rule.jq_path_expressions:
-                    if expression and not expression.startswith("."):
+                    if _MISTAKEN_PATH_RE.match(expression):
                         findings.append(_finding(app, rule.kind, expression, severity))
 
         return findings

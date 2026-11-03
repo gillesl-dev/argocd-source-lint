@@ -1,5 +1,5 @@
 name: False positive or missed finding
-description: A rule fires when it shouldn't, or stays silent on something it should catch
+description: A rule fires when it shouldn't, or misses something it should catch
 labels: ["false-positive"]
 body:
   - type: dropdown
@@ -38,6 +38,6 @@ body:
     id: why
     attributes:
       label: Why the current result is wrong
-      description: What ArgoCD actually does with this manifest, and how you confirmed it (a real sync, the ArgoCD docs, the ArgoCD source).
+      description: What ArgoCD does with this manifest, and how you checked it (a real sync, the ArgoCD docs, the ArgoCD source).
     validations:
       required: true

@@ -1,14 +1,6 @@
-"""End-to-end mutation tests: one known defect injected into an otherwise
-clean synthetic GitOps repo per case, run through the real CLI and read
-back from its JSON report.
-
-Positive cases must fire their rule at its documented default severity and
-no other blocking rule. Negative cases are legitimate setups that once
-produced false positives and must stay clean. Released 1.2.2 passed every
-positive case and failed all four negative ones.
-
-Adapted from a standalone script written from the README alone, without
-reading the rules' code."""
+"""End-to-end mutation tests through the real CLI's JSON report. Each positive case
+injects one defect and must fire only its rule, at the README's default severity.
+Negative cases are valid setups that must produce nothing blocking."""
 
 from __future__ import annotations
 
@@ -376,11 +368,11 @@ POSITIVE_CASES = [
     ),
 ]
 
-# Each one guards a false positive fixed after 1.2.2: keep them even if they
-# look redundant with the rules' unit tests.
+# Each one guards a fixed false positive: keep them even if they look
+# redundant with the rules' unit tests.
 NEGATIVE_CASES = [
     Case("clean base"),
-    # 2469b56: the same file deployed to two namespaces is two resources.
+    # The same file deployed to two namespaces is two resources.
     Case(
         "applicationset fan-out to two namespaces",
         {
@@ -390,7 +382,7 @@ NEGATIVE_CASES = [
             ),
         },
     ),
-    # 2469b56: generated Applications live in their ApplicationSet's namespace.
+    # Generated Applications live in their ApplicationSet's namespace.
     Case(
         "two applicationsets in different namespaces generating the same name",
         {
@@ -403,7 +395,7 @@ NEGATIVE_CASES = [
             ),
         },
     ),
-    # 8def70d: a name the API server would refuse can never collide.
+    # A name the API server would refuse can never collide.
     Case(
         "two applications named with an unfilled placeholder",
         {
@@ -413,7 +405,19 @@ NEGATIVE_CASES = [
             "apps/tpl-2.yaml": _app("<CLUSTER_NAME>-app", path="manifests/tpl-2"),
         },
     ),
-    # 8def70d: same-named AppProjects used to be checked against the last one read.
+    # A pull request checkout is detached and has the target branch only as
+    # `origin/main`, which must not make Applications targeting `main`
+    # `unverifiable`.
+    Case(
+        "pull request checkout with the target branch only on origin",
+        git_after=[
+            ["update-ref", "refs/remotes/origin/main", "HEAD"],
+            ["commit", "-q", "--allow-empty", "-m", "pull request change"],
+            ["checkout", "-q", "--detach"],
+            ["branch", "-q", "-D", "main"],
+        ],
+    ),
+    # Same-named AppProjects can't tell which one ArgoCD loads.
     Case(
         "two same-named appprojects in two folders",
         {
@@ -421,6 +425,88 @@ NEGATIVE_CASES = [
             "projects/b/shared.yaml": _project("shared", ["ns-a"]),
             "manifests/proj/cm.yaml": _configmap("proj"),
             "apps/proj-app.yaml": _app("proj-app", path="manifests/proj", project="shared"),
+        },
+    ),
+    # Valid setups that must neither crash nor give false findings.
+    Case(
+        "application with a non-string targetRevision",
+        {"apps/odd.yaml": _app("odd", revision="main").replace('"main"', "2.0")},
+    ),
+    Case(
+        "helm valueFiles relative to the chart path",
+        {
+            "apps/helm-app.yaml": _app(
+                "helm-app", path="charts/app", helm_values=["../shared/values.yaml"]
+            ),
+            "charts/shared/values.yaml": "b: 2\n",
+        },
+    ),
+    Case(
+        "appproject destination with a negated namespace",
+        {
+            "projects/team.yaml": _project("team", []).replace(
+                "  destinations:\n",
+                "  destinations:\n    - server: '*'\n      namespace: '!kube-system'\n",
+            )
+        },
+    ),
+    Case(
+        "hpa target without replicas in git",
+        {
+            "manifests/web/deployment.yaml": DEPLOYMENT.replace("  replicas: 2\n", ""),
+            "manifests/web/hpa.yaml": HPA,
+        },
+    ),
+    Case(
+        "git files generator using {{path}}",
+        {
+            "manifests/envs/dev/config.json": '{"env": "dev"}\n',
+            "manifests/envs/dev/cm.yaml": _configmap("env-dev"),
+            "apps/envs.yaml": _list_appset("envs", "argocd", [], "x")
+            .replace(
+                "    - list:\n        elements:\n",
+                f"    - git:\n        repoURL: {ORIGIN}\n        revision: main\n"
+                "        files:\n          - path: manifests/envs/*/config.json\n",
+            )
+            .replace("      name: '{{name}}'", "      name: 'env-{{env}}'")
+            .replace("path: x", "path: '{{path}}'")
+            .replace("namespace: '{{ns}}'", "namespace: ns-a"),
+        },
+    ),
+    # Argo CD substitutes its build variables in valueFiles.
+    Case(
+        "helm valueFiles named after the application",
+        {
+            "apps/helm-app.yaml": _app(
+                "helm-app", path="charts/app", helm_values=["values-$ARGOCD_APP_NAME.yaml"]
+            ),
+            "charts/app/values-helm-app.yaml": "c: 3\n",
+        },
+    ),
+    # A config management plugin may read any file of its directory.
+    Case(
+        "plugin source over nested folders",
+        {
+            "manifests/cmp/base/cm.yaml": _configmap("cmp-base"),
+            "apps/cmp.yaml": _app("cmp", path="manifests/cmp").replace(
+                "    path: manifests/cmp\n",
+                "    path: manifests/cmp\n    plugin:\n      name: cmp\n",
+            ),
+        },
+    ),
+    # Its Applications are not generated, so the folder only looks orphaned.
+    Case(
+        "go template applicationset over a folder",
+        {
+            "manifests/gotpl/a/cm.yaml": _configmap("gotpl-a"),
+            "apps/gotpl.yaml": _list_appset("gotpl", "argocd", [], "x")
+            .replace("spec:\n  generators:", "spec:\n  goTemplate: true\n  generators:", 1)
+            .replace(
+                "    - list:\n        elements:\n",
+                f"    - git:\n        repoURL: {ORIGIN}\n        revision: main\n"
+                "        directories:\n          - path: manifests/gotpl/*\n",
+            )
+            .replace("path: x", "path: '{{.path.path}}'"),
         },
     ),
 ]

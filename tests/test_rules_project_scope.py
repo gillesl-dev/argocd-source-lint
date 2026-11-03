@@ -438,10 +438,8 @@ spec:
 
 
 def test_same_named_appprojects_are_reported_info_not_checked_against_one_of_them(git_repo):
-    """Two folders each declaring an AppProject `team-a` (a template repo
-    with one tree per provider): the rule used to check against whichever
-    was read last, reporting an Application against the other folder's
-    project."""
+    """Two folders each declaring AppProject `team-a` (a template repo with one
+    tree per provider) must not be checked against whichever was read last."""
     repo_root = git_repo(
         {
             "bootstrap/argocd-apps/app.yaml": """apiVersion: argoproj.io/v1alpha1
@@ -469,3 +467,43 @@ spec:
     assert findings[0].severity == Severity.INFO
     assert "2 AppProjects named `team-a`" in findings[0].message
     assert "aws/appprojects/team-a.yaml" in findings[0].message
+
+
+def test_negated_namespace_with_a_server_wildcard_is_info_not_a_violation(git_repo):
+    repo_root = git_repo(
+        {
+            "bootstrap/argocd-apps/app.yaml": """\
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: app
+spec:
+  project: team-a
+  source:
+    repoURL: https://example.invalid/repo.git
+    targetRevision: HEAD
+    path: manifests/app
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: web
+""",
+            "bootstrap/appprojects/team-a.yaml": """\
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: team-a
+spec:
+  sourceRepos:
+    - '*'
+  destinations:
+    - server: '*'
+      namespace: '!kube-system'
+""",
+        }
+    )
+
+    findings = _run_rule(repo_root)
+
+    assert len(findings) == 1
+    assert findings[0].severity == Severity.INFO
+    assert "negated" in findings[0].message.lower()

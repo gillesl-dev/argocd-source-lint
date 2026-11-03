@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import time
 
-from argocd_source_lint.globs import match_glob
+from argocd_source_lint.globs import expand_braces, match_glob
 
 
 def test_exact_literal_match():
@@ -33,9 +33,8 @@ def test_multiple_stars_in_one_pattern():
 
 
 def test_regex_metacharacters_in_pattern_are_treated_as_literal():
-    """The pattern is matched directly, never translated into a regex:
-    a literal `.`/`+`/`(` in a real path (e.g. `clusters/dev.json`) must
-    never be interpreted as a regex metacharacter."""
+    """Patterns are never translated to a regex, so a `.`, `+` or `(` in a path
+    such as `clusters/dev.json` stays literal."""
     assert match_glob("clusters/*.json", "clusters/dev.json") is True
     assert match_glob("clusters/*.json", "clusters/devXjson") is False
     assert match_glob("a(b)+c", "a(b)+c") is True
@@ -51,16 +50,9 @@ def test_pattern_with_trailing_wildcard_after_full_match():
 
 
 def test_a_pattern_that_previously_caused_catastrophic_backtracking_is_fast():
-    """Confirmed for real before the fix: `re.match("^" + ".*".join(...)
-    + "$", candidate)` on a pattern shaped like `*a*a*a...*a!` against a
-    non-matching candidate of `a`s hung indefinitely: a classic ReDoS
-    (repeated wildcard/literal pairs, ambiguous about which wildcard
-    consumed which character, on a string that ultimately can't match).
-    Both the pattern and the candidate are repo-controlled (an
-    ApplicationSet generator's own `path:`, or an AppProject's
-    `sourceRepos`/`destinations`), so this had to be fixed with a
-    matching algorithm that's polynomial by construction, not by
-    bounding input size."""
+    """`*a*a*a...*a!` against a run of `a`s is a classic ReDoS for a regex-based
+    matcher. Pattern and candidate are both repo-controlled, so matching must be
+    polynomial by construction rather than bounded by input size."""
     pattern = "*a" * 40 + "!"
     candidate = "a" * 60
 
@@ -68,5 +60,13 @@ def test_a_pattern_that_previously_caused_catastrophic_backtracking_is_fast():
     result = match_glob(pattern, candidate)
     elapsed = time.perf_counter() - start
 
-    assert result is False  # candidate has no "!"; genuinely no match
+    assert result is False  # candidate has no "!", so no match
     assert elapsed < 1.0
+
+
+def test_expand_braces_anywhere_and_nested():
+    assert sorted(expand_braces("a-{x,{y,z}}.yaml")) == ["a-x.yaml", "a-y.yaml", "a-z.yaml"]
+
+
+def test_expand_braces_gives_up_past_the_limit():
+    assert expand_braces("{a,b}" * 40) is None

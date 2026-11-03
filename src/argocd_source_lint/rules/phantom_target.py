@@ -16,6 +16,12 @@ RULE_ID = "phantom-target"
 
 
 class PhantomTargetRule(Rule):
+    """Detect a source `path` with no tracked files at its `targetRevision`.
+
+    A path mistyped or removed by a refactor still looks valid in the
+    Application manifest itself.
+    """
+
     rule_id = RULE_ID
 
     def check(
@@ -34,6 +40,8 @@ class PhantomTargetRule(Rule):
                 findings.append(external_source_finding(RULE_ID, app, source))
 
             for source in local_path_sources(app, local_origin):
+                if source.path is None:
+                    continue
                 revision = source.target_revision
                 if revision not in revision_resolvable:
                     revision_resolvable[revision] = is_revision_resolvable(repo_root, revision)

@@ -1,39 +1,58 @@
 spec:
   inputs:
     scope:
-      description: 'Root of the repo to analyze'
+      description: 'Root of the Git repository to analyze, not a subfolder of it'
       default: '.'
     stage:
       description: 'CI stage in which to run the job'
       default: 'test'
     fail_on_error:
       description: >-
-        Fail the job if blocking findings (error, or unverifiable
-        depending on the policy) are detected. Set to false for a
-        progressive rollout (report only, without breaking the pipeline).
+        Fail the job on a blocking finding (error, or unverifiable
+        depending on the policy). With false, findings are only reported.
+        A tool error still fails the job.
       type: boolean
       default: true
+    fail_on_empty:
+      description: >-
+        Fail the job when no ArgoCD Application is found, which usually
+        means a wrong path.
+      type: boolean
+      default: true
+    args:
+      description: 'Extra command-line options, for example "--skip orphan-source"'
+      default: ''
+    image:
+      description: >-
+        Image the job runs in. It needs Python 3.11 or later, and git or
+        apt-get. On a runner without Internet access, use a mirrored image
+        and set PIP_INDEX_URL to your PyPI mirror.
+      default: 'python:3.11-slim'
+    job_name:
+      description: 'Name of the job, distinct for each include of this component'
+      default: 'argocd-source-lint'
 ---
 
-argocd-source-lint:
+"$[[ inputs.job_name ]]":
   stage: $[[ inputs.stage ]]
-  image: python:3.11-slim
+  image: $[[ inputs.image ]]
   before_script:
-    # python:3.11-slim doesn't ship git. Every rule here resolves a
-    # source through it, and without it the tool degrades into false
-    # positives instead of erroring (see DESIGN.md).
-    - apt-get update -qq && apt-get install -y -qq --no-install-recommends git
+    # python:3.11-slim does not ship git, and every rule resolves sources
+    # through it. Without git the CLI exits with code 2 (see DESIGN.md).
+    - command -v git > /dev/null || (apt-get update -qq && apt-get install -y -qq --no-install-recommends git)
     # Pinned to this tag's own release (kept in sync with pyproject.toml by
     # tests/test_release_versions.py).
-    - pip install --disable-pip-version-check "argocd-source-lint==1.3.1"
+    - pip install --disable-pip-version-check "argocd-source-lint==1.4.0"
+  # A failing command stops a GitLab job, so the exit code is captured with
+  # `|| exit_code=$?`. Exit code 2 is a
+  # tool error (bad path, missing git, invalid config) and always fails.
   script:
-    - |
-      argocd-source-lint "$[[ inputs.scope ]]" --format gitlab-codequality --output gl-code-quality-report.json
-      exit_code=$?
-      argocd-source-lint "$[[ inputs.scope ]]" --format table
-      if [ "$[[ inputs.fail_on_error ]]" = "true" ]; then
-        exit "$exit_code"
-      fi
+    - exit_code=0
+    - empty_flag=""
+    - if [ "$[[ inputs.fail_on_empty ]]" = "true" ]; then empty_flag="--fail-on-empty"; fi
+    - argocd-source-lint "$[[ inputs.scope ]]" --format gitlab-codequality --output gl-code-quality-report.json $empty_flag $[[ inputs.args ]] || exit_code=$?
+    - argocd-source-lint "$[[ inputs.scope ]]" --format table $[[ inputs.args ]] || true
+    - if [ "$exit_code" -eq 2 ] || [ "$[[ inputs.fail_on_error ]]" = "true" ]; then exit "$exit_code"; fi
   artifacts:
     reports:
       codequality: gl-code-quality-report.json

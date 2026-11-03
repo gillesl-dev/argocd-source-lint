@@ -81,16 +81,9 @@ def test_revision_matches_checkout_none_for_unresolvable_revision(git_repo):
 
 
 def test_flag_like_revision_is_rejected_without_ever_calling_git(git_repo):
-    """A `targetRevision` (or an ApplicationSet `git` generator's own
-    `revision`) is repo-controlled YAML, not a value this tool ever
-    chose: a value like `--remote=<url>` passed straight through to
-    `git archive` is read as a *flag*, not a revision, and git actually
-    reaches out to `<url>` instead of failing to parse. Confirmed for
-    real (manually, not in this test to avoid a slow/flaky network
-    call): `git archive "--remote=https://192.0.2.1/x"` spends the full
-    TCP connect timeout instead of erroring instantly. Every function
-    here must reject a `-`-prefixed revision *before* it ever reaches a
-    `git` subprocess (asserted here by spying on `subprocess.run`)."""
+    """A repo-controlled revision such as `--remote=<url>` would reach `git archive`
+    as a flag and open a network connection, so every function must reject a
+    leading `-` before spawning `git`."""
     repo_root = git_repo({"a.txt": "x"})
     clear_caches()
     malicious = "--remote=https://192.0.2.1/x"
@@ -105,10 +98,8 @@ def test_flag_like_revision_is_rejected_without_ever_calling_git(git_repo):
 
 
 def test_resolve_commit_is_cached_across_repeated_calls(git_repo):
-    """50 Applications sharing `targetRevision: HEAD`, each checked by
-    several local-source rules, cost 702 identical `git rev-parse`
-    calls before this cache existed (~58s on Windows, where subprocess
-    spawn itself dominates), confirmed for real, not estimated."""
+    """Applications sharing `targetRevision: HEAD` would otherwise each spawn
+    `git rev-parse` again, which dominates run time on Windows."""
     repo_root = git_repo({"a.txt": "x"})
     clear_caches()
 
@@ -131,10 +122,8 @@ def test_path_has_tracked_files_false_for_a_missing_path(git_repo):
 
 
 def test_path_has_tracked_files_does_not_confuse_a_prefix_collision(git_repo):
-    """`apps/app-1` and `apps/app-10` share a textual prefix but are
-    different directories: a naive `str.startswith(pathspec)` (missing
-    the trailing `/`) would wrongly treat the second as covering the
-    first."""
+    """`apps/app-1` and `apps/app-10` share a prefix: a `startswith` check without
+    the trailing `/` would treat one as covering the other."""
     repo_root = git_repo({"apps/app-10/deployment.yaml": "x"})
     assert path_has_tracked_files(repo_root, "HEAD", "apps/app-1") is False
 
@@ -145,9 +134,8 @@ def test_path_has_tracked_files_true_for_an_exact_file_path(git_repo):
 
 
 def test_tree_paths_at_revision_is_cached_across_repeated_calls(git_repo):
-    """`phantom-target` used to run one `git ls-tree` per Application even
-    though most share `targetRevision: HEAD`; confirmed for real: 40
-    Applications cost ~2.3s of it before this cache existed."""
+    """`phantom-target` asks for the tree once per Application, and most
+    Applications share `targetRevision: HEAD`."""
     repo_root = git_repo({"apps/app-1/deployment.yaml": "x"})
     clear_caches()
 
@@ -155,8 +143,8 @@ def test_tree_paths_at_revision_is_cached_across_repeated_calls(git_repo):
         for _ in range(5):
             assert path_has_tracked_files(repo_root, "HEAD", "apps/app-1") is True
 
-    ls_tree_calls = [c for c in spy.call_args_list if c.args[0][:2] == ["git", "ls-tree"]]
-    assert len(ls_tree_calls) == 1
+    listings = [c for c in spy.call_args_list if c.args[0][1] in ("ls-tree", "ls-files")]
+    assert len(listings) == 1
 
 
 def test_clear_caches_picks_up_a_new_tree(git_repo, git_commit):
@@ -176,10 +164,8 @@ def test_tree_paths_at_revision_lists_every_file(git_repo):
 
 
 def test_clear_caches_picks_up_a_new_commit(git_repo, git_tag, git_commit):
-    """The one scenario the cache must never get wrong: a repo mutated
-    between two `argocd-source-lint` invocations that happen to share
-    a process (only possible in a test harness calling the CLI twice
-    in-process; a real run is always a fresh OS process)."""
+    """Two CLI runs in one process (only possible in a test harness) must see a
+    commit made between them."""
     repo_root = git_repo({"a.txt": "x"})
     git_tag(repo_root, "v1.0")
     clear_caches()
@@ -189,3 +175,49 @@ def test_clear_caches_picks_up_a_new_commit(git_repo, git_tag, git_commit):
     clear_caches()
 
     assert revision_matches_checkout(repo_root, "v1.0") is False
+
+
+def _git(repo_root, *args):
+    subprocess.run(["git", *args], cwd=repo_root, check=True, capture_output=True)
+
+
+def _pull_request_checkout(repo_root, git_commit):
+    """Same shape as a CI checkout of a pull request: detached HEAD on a
+    newer commit, the target branch present only as `origin/main`."""
+    _git(repo_root, "update-ref", "refs/remotes/origin/main", "HEAD")
+    git_commit(repo_root, {"pr.txt": "x"}, message="pull request change")
+    _git(repo_root, "checkout", "-q", "--detach")
+    for branch in ("main", "master"):
+        subprocess.run(["git", "branch", "-q", "-D", branch], cwd=repo_root, capture_output=True)
+
+
+def test_branch_present_only_as_origin_branch_is_resolved(git_repo, git_commit):
+    repo_root = git_repo({"manifests/app/deployment.yaml": "kind: Deployment\n"})
+    _pull_request_checkout(repo_root, git_commit)
+    clear_caches()
+
+    assert is_revision_resolvable(repo_root, "main") is True
+    assert revision_matches_checkout(repo_root, "main") is False
+    assert path_has_tracked_files(repo_root, "main", "manifests/app") is True
+    assert "pr.txt" not in tree_paths_at_revision(repo_root, "main")
+    snapshot = materialize_revision(repo_root, "main")
+    assert snapshot is not None
+    assert (snapshot / "manifests/app/deployment.yaml").is_file()
+
+
+def test_local_branch_wins_over_origin_branch(git_repo, git_commit):
+    repo_root = git_repo({"a.txt": "x"})
+    _git(repo_root, "branch", "-M", "main")
+    _git(repo_root, "update-ref", "refs/remotes/origin/main", "HEAD")
+    git_commit(repo_root, {"b.txt": "y"}, message="local only")
+    clear_caches()
+
+    assert revision_matches_checkout(repo_root, "main") is True
+
+
+def test_revision_missing_locally_and_on_origin_stays_unresolvable(git_repo):
+    repo_root = git_repo({"a.txt": "x"})
+    clear_caches()
+
+    assert is_revision_resolvable(repo_root, "no-such-branch") is False
+    assert list_tree_paths(repo_root, "no-such-branch", ".") == []

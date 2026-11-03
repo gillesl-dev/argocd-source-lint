@@ -1,6 +1,6 @@
 - id: argocd-source-lint
   name: argocd-source-lint
-  description: Detects silent failures in multi-source ArgoCD Applications.
+  description: Lints ArgoCD Applications for mistakes ArgoCD doesn't report, from the Git checkout alone.
   entry: argocd-source-lint
   language: python
   pass_filenames: false

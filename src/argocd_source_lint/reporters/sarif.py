@@ -4,71 +4,10 @@ import json
 
 from argocd_source_lint import tool_version
 from argocd_source_lint.models import Finding, Severity
-from argocd_source_lint.policy import DEFAULT_RULE_SEVERITIES
+from argocd_source_lint.policy import DEFAULT_RULE_SEVERITIES, RULE_DESCRIPTIONS, rule_docs_url
 from argocd_source_lint.reporters.fingerprint import stable_fingerprint
 
 _INFORMATION_URI = "https://github.com/gillesl-dev/argocd-source-lint"
-_HELP_URI = f"{_INFORMATION_URI}#what-the-tool-does"
-
-_RULES_METADATA = {
-    "orphan-source": "Manifest present in the repo but not covered by any declared source.",
-    "broken-values-ref": "$ref in a Helm valueFiles entry with no matching source or file.",
-    "missing-ignore-diff": "Known at-risk kind with no ignoreDifferences while selfHeal is active.",
-    "phantom-target": "targetRevision/path resolves to nothing in the repo.",
-    "unresolvable-generator": (
-        "An ApplicationSet generator requires live cluster/API access, or "
-        "Go-template rendering — out of scope v1."
-    ),
-    "double-coverage": "A file covered by more than one different Application at once.",
-    "revision-mismatch": (
-        "A source's targetRevision differs from the checked-out revision -- "
-        "disk-based rules may not reflect what ArgoCD actually syncs."
-    ),
-    "project-scope-violation": (
-        "An Application's source or destination is outside the sourceRepos/"
-        "destinations scope of its own AppProject."
-    ),
-    "hpa-selfheal-conflict": (
-        "A HorizontalPodAutoscaler and selfHeal both manage spec.replicas without "
-        "ignoreDifferences + RespectIgnoreDifferences -- ArgoCD resets the HPA on every sync."
-    ),
-    "sync-validation-disabled": (
-        "Validate=false sync option skips schema validation -- an invalid manifest is "
-        "applied anyway instead of blocking."
-    ),
-    "duplicate-application-name": (
-        "Two or more Applications share the same namespace+name -- ArgoCD keys "
-        "Applications by that pair, so one silently overwrites/fights the other."
-    ),
-    "malformed-ignore-diff-pointer": (
-        "An ignoreDifferences jsonPointers entry doesn't start with / (RFC 6901) -- "
-        "it matches nothing, so the field isn't actually ignored."
-    ),
-    "malformed-ignore-diff-jq-expression": (
-        "An ignoreDifferences jqPathExpressions entry doesn't start with . -- fails "
-        "to compile as jq, voiding the entire ignoreDifferences list for that "
-        "Application, not just this entry."
-    ),
-    "unknown-sync-option": (
-        "A syncOptions entry (Application-level or the per-resource sync-options "
-        "annotation) doesn't match any ArgoCD-recognized key -- likely a typo, "
-        "silently ignored instead of erroring."
-    ),
-    "unknown-resource-hook": (
-        "An argocd.argoproj.io/hook or hook-delete-policy annotation value doesn't "
-        "match any ArgoCD-recognized value -- likely a typo, silently falls through "
-        "instead of erroring."
-    ),
-    "malformed-sync-wave": (
-        "An argocd.argoproj.io/sync-wave annotation value isn't a valid integer -- "
-        "silently falls back to wave 0 instead of erroring."
-    ),
-    "floating-target-revision": (
-        "A targetRevision is a version range instead of an exact pin. ArgoCD resolves "
-        "it against the highest matching chart version or Git tag at every sync, so "
-        "the deployed content can change with no corresponding commit."
-    ),
-}
 
 _LEVEL_BY_SEVERITY = {
     Severity.ERROR: "error",
@@ -91,7 +30,7 @@ def render_findings(findings: list[Finding]) -> str:
                         "version": tool_version(),
                         "rules": [
                             _rule(rule_id, description)
-                            for rule_id, description in _RULES_METADATA.items()
+                            for rule_id, description in RULE_DESCRIPTIONS.items()
                         ],
                     }
                 },
@@ -107,7 +46,7 @@ def _rule(rule_id: str, description: str) -> dict:
         "id": rule_id,
         "shortDescription": {"text": description},
         "fullDescription": {"text": description},
-        "helpUri": _HELP_URI,
+        "helpUri": rule_docs_url(rule_id),
         "defaultConfiguration": {"level": _LEVEL_BY_SEVERITY[DEFAULT_RULE_SEVERITIES[rule_id]]},
     }
 
@@ -122,9 +61,7 @@ def _result(finding: Finding) -> dict:
         "level": _LEVEL_BY_SEVERITY[finding.severity],
         "message": {"text": finding.message},
         "locations": [{"physicalLocation": physical_location}],
-        # Lets GitHub recognize "the same" finding across runs instead of
-        # treating every run's findings as new alerts on the Security tab
-        # (see https://docs.github.com/en/code-security/code-scanning/...
-        # -sarif-support-for-code-scanning#partialfingerprints-object).
+        # Without it, GitHub code scanning opens new alerts on every run
+        # (SARIF support docs, "partialFingerprints object").
         "partialFingerprints": {"primaryLocationLineHash": stable_fingerprint(finding)},
     }

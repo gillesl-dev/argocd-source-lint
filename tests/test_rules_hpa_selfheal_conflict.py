@@ -132,10 +132,8 @@ def test_wildcard_kind_ignore_diff_rule_matches(git_repo):
 
 
 def test_ignore_diff_rule_for_a_different_group_does_not_match(git_repo):
-    """`group` empty/omitted means the *core* API group, distinct from
-    `apps`: a rule that forgets `group: apps` silently never covers a
-    Deployment/StatefulSet, ArgoCD-side. Confirms we don't treat an empty
-    group as a wildcard."""
+    """An empty or omitted `group` is the core API group, not a wildcard: an entry
+    without `group: apps` never covers a Deployment or StatefulSet."""
     repo_root = git_repo(
         {
             "bootstrap/argocd-apps/web.yaml": _APP_HEADER
@@ -244,3 +242,59 @@ def test_namespace_scoped_ignore_diff_rule_requires_matching_namespace(git_repo)
 
     assert len(findings) == 1
     assert "no `ignoreDifferences` covers it" in findings[0].message
+
+
+def test_target_without_replicas_in_git_is_not_flagged(git_repo):
+    """The setup the Kubernetes HPA docs recommend: with no `spec.replicas`
+    in Git, self-heal has no replica count to restore."""
+    repo_root = git_repo(
+        {
+            "bootstrap/argocd-apps/web.yaml": """\
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: web
+spec:
+  source:
+    repoURL: https://example.invalid/repo.git
+    targetRevision: HEAD
+    path: manifests/web
+  syncPolicy:
+    automated:
+      selfHeal: true
+""",
+            "manifests/web/deployment.yaml": """\
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: web
+spec:
+  selector:
+    matchLabels:
+      app: web
+  template:
+    metadata:
+      labels:
+        app: web
+    spec:
+      containers:
+        - name: web
+          image: nginx
+""",
+            "manifests/web/hpa.yaml": """\
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: web
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: web
+  minReplicas: 2
+  maxReplicas: 5
+""",
+        }
+    )
+
+    assert _run_rule(repo_root) == []

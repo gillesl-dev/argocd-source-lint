@@ -170,10 +170,8 @@ spec:
 
 
 def test_applicationset_generator_colliding_with_itself_is_flagged(git_repo):
-    """Two generator entries rendering to the same name via the template
-    (e.g. a typo'd `elements` list) share the same source_file (the
-    ApplicationSet's own manifest), listed only once (see
-    `_finding`'s de-duplication)."""
+    """Two generator entries rendering the same name (e.g. a duplicated `elements`
+    item) share one source_file, listed once (see `_finding`'s de-duplication)."""
     repo_root = git_repo(
         {
             "bootstrap/appsets/team-appset.yaml": """\
@@ -322,3 +320,19 @@ def test_valid_dotted_names_are_still_compared(git_repo):
     )
 
     assert len(_run_rule(repo_root)) == 1
+
+
+def test_argocd_instances_scope_duplicate_names(git_repo):
+    repo_root = git_repo(
+        {
+            ".argocd-lint.yaml": "argocd_instances:\n  - clusters/prod\n  - clusters/staging\n",
+            "clusters/prod/apps/monitoring.yaml": _named("monitoring"),
+            "clusters/staging/apps/monitoring.yaml": _named("monitoring"),
+            "clusters/staging/apps/monitoring-copy.yaml": _named("monitoring"),
+        }
+    )
+
+    findings = _run_rule(repo_root)
+
+    assert len(findings) == 1
+    assert "clusters/staging/apps/monitoring-copy.yaml" in findings[0].message

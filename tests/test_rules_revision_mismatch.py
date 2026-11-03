@@ -119,9 +119,8 @@ spec:
 
 
 def test_unresolvable_revision_is_left_to_phantom_target(git_repo):
-    """A revision that isn't fetched at all is phantom-target's/
-    broken-values-ref's shallow-clone case (`is_revision_resolvable`) --
-    not reported a second time here."""
+    """A revision that is not fetched at all is the shallow-clone case of
+    phantom-target and broken-values-ref (`is_revision_resolvable`)."""
     repo_root = git_repo(
         {
             "bootstrap/argocd-apps/app.yaml": """\

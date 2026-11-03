@@ -5,10 +5,10 @@ body:
   - type: textarea
     id: failure
     attributes:
-      label: What silent failure does this catch
+      label: What mistake does this catch
       description: >
         Describe the ArgoCD behavior this would detect, and what happens today without a warning
-        (a wrong field gets reset, a sync silently no-ops, etc).
+        (a field gets reset, a sync option is ignored, and so on).
     validations:
       required: true
   - type: textarea
@@ -17,7 +17,7 @@ body:
       label: Source
       description: >
         A link to the ArgoCD docs, the ArgoCD source, or the operator's own documentation
-        confirming the behavior. See CONTRIBUTING.md: a signature is only added once the
-        documented behavior is confirmed, not inferred from an example.
+        that states the behavior. See CONTRIBUTING.md: a signature is only added when the
+        documentation states the behavior directly, not inferred from an example.
     validations:
       required: true

@@ -76,3 +76,38 @@ def test_argocd_version_rejects_malformed_value(git_repo):
 
     with pytest.raises(ValidationError):
         load_policy(repo_root)
+
+
+@pytest.mark.parametrize(
+    ("pattern", "each"),
+    [
+        ("{user}-credentials", ""),
+        ("{name}-{", ""),
+        ("{0}", ""),
+        ("{name}-{role}", "    name_from_each: spec.users\n"),
+    ],
+)
+def test_known_operator_name_pattern_rejects_unknown_placeholders(git_repo, pattern, each):
+    repo_root = git_repo(
+        {
+            ".argocd-lint.yaml": "known_operators:\n  - crd_trigger: example.com/Database\n"
+            f"    name_from: metadata.name\n{each}    expect_ignore_on:\n"
+            f"      - kind: Secret\n        name_pattern: '{pattern}'\n"
+        }
+    )
+
+    with pytest.raises(ValidationError):
+        load_policy(repo_root)
+
+
+def test_known_operator_name_pattern_accepts_user_with_name_from_each(git_repo):
+    repo_root = git_repo(
+        {
+            ".argocd-lint.yaml": "known_operators:\n  - crd_trigger: example.com/Database\n"
+            "    name_from: metadata.name\n    name_from_each: spec.users\n"
+            "    expect_ignore_on:\n      - kind: Secret\n"
+            "        name_pattern: '{user}.{name}.credentials'\n"
+        }
+    )
+
+    assert load_policy(repo_root).known_operators[0].name_from_each == "spec.users"

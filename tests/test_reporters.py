@@ -8,9 +8,8 @@ from xml.etree import ElementTree as ET
 from rich.console import Console
 
 from argocd_source_lint.models import Finding, Severity
-from argocd_source_lint.policy import DEFAULT_RULE_SEVERITIES
-from argocd_source_lint.reporters import gitlab_codequality, json_report, junit, sarif
-from argocd_source_lint.reporters.sarif import _RULES_METADATA
+from argocd_source_lint.policy import DEFAULT_RULE_SEVERITIES, RULE_DESCRIPTIONS
+from argocd_source_lint.reporters import github, gitlab_codequality, json_report, junit, sarif
 from argocd_source_lint.reporters.table import render_findings as render_table
 from argocd_source_lint.reporters.table import render_info_summary
 
@@ -63,11 +62,9 @@ def test_sarif_structure_and_severity_mapping():
     assert payload["$schema"] == "https://json.schemastore.org/sarif-2.1.0.json"
     assert payload["version"] == "2.1.0"
     run = payload["runs"][0]
-    # Every known rule, not just the two with results here: covered
-    # more precisely (against DEFAULT_RULE_SEVERITIES) by
-    # test_sarif_rules_metadata_covers_every_configurable_rule below;
-    # this just confirms render_findings doesn't filter driver.rules
-    # down to the rules that actually produced a result.
+    # driver.rules lists every known rule, not only those with results here.
+    # The exact list is checked in
+    # test_sarif_rules_metadata_covers_every_configurable_rule.
     rule_ids = {rule["id"] for rule in run["tool"]["driver"]["rules"]}
     assert rule_ids == set(DEFAULT_RULE_SEVERITIES)
 
@@ -93,12 +90,10 @@ def test_sarif_rules_have_recommended_metadata():
 
 
 def test_sarif_rules_metadata_covers_every_configurable_rule():
-    """A third manually maintained rule-ID list, same silent-omission
-    risk as `cli.RULES`/`policy.DEFAULT_RULE_SEVERITIES`: a rule missing
-    here doesn't crash (the SARIF `results` still reference it by id),
-    it just silently loses its `fullDescription`/`helpUri`/
-    `defaultConfiguration` in the `driver.rules` array."""
-    assert set(_RULES_METADATA) == set(DEFAULT_RULE_SEVERITIES)
+    """`driver.rules` is a third hand-maintained rule list: a missing rule still
+    appears in `results` but loses its `fullDescription`, `helpUri` and
+    `defaultConfiguration`."""
+    assert set(RULE_DESCRIPTIONS) == set(DEFAULT_RULE_SEVERITIES)
 
 
 def test_sarif_results_carry_a_stable_fingerprint():
@@ -162,14 +157,9 @@ def test_table_prints_no_issues_message_when_findings_empty():
 
 
 def test_table_escapes_rich_markup_in_repo_controlled_fields():
-    """`Table.add_row` parses every string argument as rich markup by
-    default; confirmed for real: an Application name containing
-    `[link=...]` rendered as an actual clickable hyperlink, and a
-    `[bold red on white]`-style tag actually re-styled the output,
-    before this was fixed. `application`/`message`/`file` (via
-    `metadata.name`, a rule's message text, a filename) are all
-    repo-controlled: a crafted repo must never be able to spoof or
-    restyle this tool's own terminal output."""
+    """`Table.add_row` parses strings as rich markup, and Application names,
+    messages and filenames come from the repo: a `[link=...]` or style tag must
+    not change the terminal output."""
     finding = Finding(
         rule_id="orphan-source",
         severity=Severity.ERROR,
@@ -245,8 +235,7 @@ _FINDING_WITH_CONTROLS = Finding(
 
 
 def test_table_shows_terminal_control_characters_instead_of_emitting_them():
-    """`escape()` only covers rich markup: an ESC byte from the repo went
-    straight to the terminal before this was fixed."""
+    """`escape()` only covers rich markup, not raw control bytes such as ESC."""
     console = Console(file=io.StringIO(), no_color=True, width=300)
     render_table(console, [_FINDING_WITH_CONTROLS])
 
@@ -258,8 +247,6 @@ def test_table_shows_terminal_control_characters_instead_of_emitting_them():
 
 
 def test_junit_stays_valid_xml_with_control_characters_in_findings():
-    """Before this was fixed, one control character made the whole report
-    unparseable."""
     root = ET.fromstring(junit.render_findings([_FINDING_WITH_CONTROLS]))
 
     testcase = root.find("testsuite/testcase")
@@ -311,9 +298,8 @@ def test_junit_is_valid_empty_suite_when_no_findings():
 
 
 def test_junit_disambiguates_duplicate_testcase_names():
-    """GitLab's own JUnit parser silently drops every testcase after the
-    first sharing the same name: two different findings (different
-    file/Application) can share the exact same message."""
+    """GitLab's JUnit parser drops every testcase after the first with a given
+    name, and two findings on different files can share a message."""
     first = Finding(
         rule_id="unknown-resource-hook",
         severity=Severity.WARNING,
@@ -332,7 +318,7 @@ def test_junit_disambiguates_duplicate_testcase_names():
     root = ET.fromstring(junit.render_findings([first, second]))
 
     names = {tc.get("name") for tc in root.find("testsuite").findall("testcase")}
-    assert len(names) == 2  # both stayed distinguishable, neither would be dropped by GitLab
+    assert len(names) == 2  # distinguishable, so GitLab drops neither
 
 
 def test_gitlab_codequality_fingerprint_is_stable_and_unique():
@@ -345,3 +331,32 @@ def test_gitlab_codequality_fingerprint_is_stable_and_unique():
     replay = json.loads(gitlab_codequality.render_findings([_FINDING_NO_LINE]))
     original = next(i for i in payload if i["check_name"] == "orphan-source")
     assert replay[0]["fingerprint"] == original["fingerprint"]
+
+
+def test_github_annotations_map_severities_and_carry_location():
+    lines = github.render_findings([_FINDING_NO_LINE, _FINDING_WITH_LINE]).splitlines()
+
+    assert lines[0] == (
+        "::error file=manifests/orphaned/configmap.yaml,title=orphan-source"
+        "::File not covered: manifests/orphaned/configmap.yaml"
+    )
+    assert lines[1].startswith(
+        "::warning file=bootstrap/argocd-apps/demo-app.yaml,title=phantom-target,line=12::"
+    )
+
+
+def test_github_annotation_cannot_be_split_into_a_second_command():
+    finding = Finding(
+        rule_id="phantom-target",
+        severity=Severity.INFO,
+        application="x",
+        message="50% done\n::error::forged",
+        file=Path("a,b:c.yaml"),
+    )
+
+    output = github.render_findings([finding])
+
+    assert "\n" not in output
+    assert (
+        output == "::notice file=a%2Cb%3Ac.yaml,title=phantom-target::50%25 done%0A::error::forged"
+    )

@@ -1,19 +1,13 @@
 # Contributing to argocd-source-lint
 
-See [DESIGN.md](./DESIGN.md) for the reasoning behind the mono-repo v1 scope and other
+See [DESIGN.md](./DESIGN.md) for the reasoning behind the single-repository scope and other
 non-obvious implementation decisions.
 
-## AI assistance
+Coding agents also read [CLAUDE.md](./CLAUDE.md).
 
-Parts of the code and documentation were written with an AI assistant (Claude Code). Commits
-since `v1.2.0` carry an `Assisted-by` trailer; earlier commits carry no attribution trailer.
-All changes are reviewed and merged by the maintainer.
+## History rewrite of 2026-10-27
 
-If you use Claude Code on this repository, run `git config core.hooksPath .githooks` once per
-clone. It normalizes AI attribution to that same trailer regardless of what the tool writes by
-default.
-
-On 2026-10-27 the commit history was rewritten once to make AI attribution consistent. Tags
+The commit history was rewritten once on 2026-10-27. Tags
 `v1.2.1` and `v1.2.2` now point to new commits with identical content. If you cloned before
 that date, run `git fetch --tags --force && git pull --rebase`. A plain `git pull` tries to
 merge the old commits back in and stops on a conflict. Published PyPI releases are unaffected.
@@ -38,7 +32,7 @@ src/argocd_source_lint/
 ├── cli.py           # Typer entrypoint
 ├── models.py        # Application, Source, Finding, Severity...
 ├── loader.py        # Application discovery and parsing
-├── git_context.py   # Local repo detection, mono-repo classification, Git primitives
+├── git_context.py   # Local repo detection, source classification, Git primitives
 ├── fsutil.py        # YAML discovery and multi-document parsing
 ├── coverage.py      # Coverage resolution for path sources
 ├── policy.py        # Loading and merging .argocd-lint.yaml
@@ -56,8 +50,8 @@ src/argocd_source_lint/
    check(applications, repo_root, policy, local_origin) -> list[Finding]
    ```
 
-2. Use `git_context.local_path_sources` and `external_path_sources` to preserve the mono-repo v1
-   behavior.
+2. Use `git_context.local_path_sources` and `external_path_sources` to keep the
+   single-repository behavior.
 
    Check local sources normally. External sources should produce an `info` finding through
    `rules.base.external_source_finding`.
@@ -67,6 +61,10 @@ src/argocd_source_lint/
 
 3. Register the rule in `RULES` in `cli.py`.
 
+   Add its default severity to `DEFAULT_RULE_SEVERITIES` and a one-line description to
+   `RULE_DESCRIPTIONS` in `policy.py`, and a section named after the rule ID in
+   `docs/rules.md`. Tests fail until all three exist.
+
 4. Add tests:
    - use the shared `tests/fixtures/good_repo` for the compliant case;
    - add `tests/fixtures/bad_my_rule/` for the failing case;
@@ -74,9 +72,7 @@ src/argocd_source_lint/
    - add a positive case to `tests/test_mutations.py`, and the rule's documented default severity
      to `DOCUMENTED_SEVERITIES` there (a test fails until both exist).
 
-5. If possible, run the rule against a real GitOps repository before opening the PR. This is how
-   several early coverage gaps were found, including `directory.include`/`exclude` and
-   `$ref`/`helm.valueFiles`.
+5. If possible, run the rule against a real GitOps repository before opening the PR.
 
 ## Adding an operator to `missing-ignore-diff`
 
@@ -96,16 +92,15 @@ dotted path to that mapping. Each key becomes `{user}` alongside `{name}` in `na
 
 See the Zalando Postgres Operator entry in `known-operators.yaml` for an example.
 
-Only add a signature when the operator's own documentation confirms the derived resource name.
-Do not infer naming behavior from examples or assumptions. See [DESIGN.md](./DESIGN.md) for the
+Only add a signature when the operator's own documentation states the derived resource name.
+Do not infer naming behavior from examples. See [DESIGN.md](./DESIGN.md) for the
 reasoning behind this constraint.
 
 ## Code style
 
 - Add comments only when they explain a non-obvious reason: a hidden constraint, verified ArgoCD
   behavior, or a workaround.
-- Avoid introducing an abstraction until there is a second real use case. `coverage.py`, `fsutil.py`,
-  and the Git helpers in `git_context.py` all followed that rule.
+- Avoid introducing an abstraction until there is a second real use case.
 - Every rule must work without cluster access.
 - Ruff handles linting and formatting, with configuration in `pyproject.toml`:
 

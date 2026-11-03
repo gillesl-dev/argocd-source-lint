@@ -13,11 +13,9 @@ RULE_ID = "hpa-selfheal-conflict"
 
 _RESPECT_IGNORE_DIFFERENCES = "RespectIgnoreDifferences=true"
 
-# The Kubernetes API group of a HorizontalPodAutoscaler's usual targets,
-# used only when the HPA doesn't spell out `scaleTargetRef.apiVersion`
-# itself (it's optional in practice even though the CrossVersionObjectReference
-# schema marks it required). A kind outside this map is skipped rather than
-# guessed at (e.g. a custom scalable CRD like Argo Rollouts' `Rollout`).
+# API group of the usual HPA targets, used when `scaleTargetRef.apiVersion`
+# is omitted, which is common even though the schema marks it required.
+# Other kinds, such as a custom scalable CRD, are skipped.
 _KNOWN_TARGET_GROUPS = {
     "Deployment": "apps",
     "StatefulSet": "apps",
@@ -27,11 +25,13 @@ _KNOWN_TARGET_GROUPS = {
 
 
 class HpaSelfHealConflictRule(Rule):
-    """A `HorizontalPodAutoscaler` and `selfHeal: true` both managing the
-    same `spec.replicas` field is a well-known ArgoCD footgun (see
-    DESIGN.md): `ignoreDifferences` alone only affects diff calculation,
-    not the sync itself; the `RespectIgnoreDifferences` sync option is
-    also required, and is easy to miss."""
+    """Detect an HPA target whose `spec.replicas` selfHeal would reset.
+
+    With selfHeal on, Argo CD reverts the replica count the HPA set unless
+    `ignoreDifferences` covers the target. That alone only affects the diff:
+    the `RespectIgnoreDifferences=true` sync option is also needed for the
+    sync to honor it (see DESIGN.md).
+    """
 
     rule_id = RULE_ID
 
@@ -46,10 +46,8 @@ class HpaSelfHealConflictRule(Rule):
         findings: list[Finding] = []
 
         for app in applications:
-            # Same heuristic scoping as missing-ignore-diff: without
-            # selfHeal, ArgoCD never re-applies an out-of-Git-managed
-            # field on its own, so the HPA and the desired state can't
-            # actually fight through this app's sync loop.
+            # Without selfHeal, Argo CD does not re-apply drifted fields on
+            # its own, so the HPA has nothing to fight with.
             if not app.sync_policy_self_heal:
                 continue
 
@@ -58,8 +56,14 @@ class HpaSelfHealConflictRule(Rule):
 
             respects_ignore_differences = _RESPECT_IGNORE_DIFFERENCES in app.sync_options
 
-            for doc in covered_documents_for_application(app, repo_root, local_origin):
-                findings.extend(_check_document(app, doc, severity, respects_ignore_differences))
+            documents = list(covered_documents_for_application(app, repo_root, local_origin))
+            without_replicas = _workloads_without_replicas(documents)
+            for doc in documents:
+                findings.extend(
+                    _check_document(
+                        app, doc, severity, respects_ignore_differences, without_replicas
+                    )
+                )
 
         return findings
 
@@ -69,11 +73,16 @@ def _check_document(
     doc: dict[str, Any],
     severity: Severity,
     respects_ignore_differences: bool,
+    without_replicas: set[tuple[str, str]],
 ) -> list[Finding]:
     scale_target = _hpa_scale_target(doc)
     if scale_target is None:
         return []
     target_kind, target_group, target_name = scale_target
+    if (target_kind, target_name) in without_replicas:
+        # Git sets no replica count, so self-heal has nothing to restore. This is
+        # the setup the Kubernetes HPA docs recommend.
+        return []
     namespace = (doc.get("metadata") or {}).get("namespace")
 
     if not _has_matching_ignore_diff(app, target_kind, target_group, target_name, namespace):
@@ -110,6 +119,14 @@ def _check_document(
         ]
 
     return []
+
+
+def _workloads_without_replicas(documents: list[dict[str, Any]]) -> set[tuple[str, str]]:
+    return {
+        (doc["kind"], str((doc.get("metadata") or {}).get("name")))
+        for doc in documents
+        if doc.get("kind") in _KNOWN_TARGET_GROUPS and "replicas" not in (doc.get("spec") or {})
+    }
 
 
 def _hpa_scale_target(doc: dict[str, Any]) -> tuple[str, str | None, str] | None:

@@ -1,20 +1,15 @@
 from __future__ import annotations
 
-# The ArgoCD version each closed-vocabulary value used by `unknown-sync-option`
-# and `unknown-resource-hook` first became valid in. Every entry was traced to
-# the real argoproj/argo-cd commit that introduced it and the earliest release
-# tag containing that commit; never estimated. See DESIGN.md for the
-# sourcing methodology and the handful of cases where documentation lagged
-# behind the actual code change.
-#
-# A value absent from one of these tables isn't recognized in that context at
-# any version: same meaning as before this module existed.
+# The first Argo CD release accepting each value checked by `unknown-sync-option`
+# and `unknown-resource-hook`, taken from the introducing argoproj/argo-cd commit
+# and the earliest tag containing it (sourcing notes in DESIGN.md). A value
+# absent from a table is not recognized in that context at any version.
 
 Version = tuple[int, ...]
 
 
 def parse_version(raw: str) -> Version:
-    """Parses "3.2", "3.2.0", or "v3.2.0" into a comparable tuple of ints."""
+    """Parse "3.2", "3.2.0" or "v3.2.0" into a comparable tuple of ints."""
     text = raw.strip()
     if text[:1] in ("v", "V"):
         text = text[1:]
@@ -29,8 +24,7 @@ def format_version(version: Version) -> str:
 
 
 def introduced_at_or_before(introduced: Version, declared: Version) -> bool:
-    """Compares two version tuples that may have different lengths, treating
-    a missing trailing component as 0 (so (3, 2) == (3, 2, 0))."""
+    """Compare versions, treating missing trailing components as 0."""
     length = max(len(introduced), len(declared))
     introduced_padded = introduced + (0,) * (length - len(introduced))
     declared_padded = declared + (0,) * (length - len(declared))
@@ -50,19 +44,14 @@ APPLICATION_SYNC_OPTION_INTRODUCED: dict[str, Version] = {
     "RespectIgnoreDifferences": (2, 3, 0),
     "ServerSideApply": (2, 5, 0),
     "ClientSideApplyMigration": (3, 3, 0),
-    # Unlike every other key above, these two were NOT valid at the
-    # Application level before this; they only existed as the per-resource
-    # `argocd.argoproj.io/sync-options` annotation (see
-    # RESOURCE_SYNC_OPTION_INTRODUCED). Confirmed via the real code commit
-    # (argoproj/argo-cd#23370, "feat: add Prune and Delete as application
-    # level sync option"), not just a docs change.
+    # Before 3.4 these were only valid as per-resource annotations
+    # (argoproj/argo-cd#23370).
     "Prune": (3, 4, 0),
     "Delete": (3, 4, 0),
 }
 
-# Per-resource `argocd.argoproj.io/sync-options` annotation keys: a
-# different, smaller set with its own timing, sometimes much earlier than the
-# same string at the Application level.
+# Per-resource `argocd.argoproj.io/sync-options` annotation keys. Some predate
+# the same key at the Application level.
 RESOURCE_SYNC_OPTION_INTRODUCED: dict[str, Version] = {
     "Prune": (1, 1, 0),
     "Validate": (1, 2, 0),
@@ -94,10 +83,7 @@ HOOK_DELETE_POLICY_INTRODUCED: dict[str, Version] = {
 
 
 def is_known(key: str, table: dict[str, Version], declared: Version | None) -> bool:
-    """Whether `key` is recognized by `table`, optionally narrowed to what's
-    actually available as of `declared` (a parsed `argocd_version`). Passing
-    `declared=None` reproduces the pre-versioning behavior: any key present in
-    the table at all is considered known, regardless of when it first shipped."""
+    """Whether `key` is in `table` and, if `declared` is given, available in that version."""
     introduced = table.get(key)
     if introduced is None:
         return False

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import fnmatch
+
 _STAR = "star"
 _DOUBLE_STAR = "double_star"
 _ANY = "any"
@@ -7,25 +9,12 @@ _LITERAL = "literal"
 
 
 def match_glob(pattern: str, candidate: str) -> bool:
-    """ArgoCD's glob semantics, shared by the `git` ApplicationSet
-    generator (`directories`/`files`) and `project-scope-violation`
-    (`sourceRepos`/`destinations`): `*` matches within one `/`-separated
-    segment, `**` crosses `/`, unlike `fnmatch`, where a lone `*`
-    already crosses `/`. `namespace`/`server`/`name` patterns never
-    contain `/` in practice, so this is equally correct there.
+    """Match Argo CD's glob syntax: `*` stays within a `/` segment, `**` crosses it.
 
-    Matched with a dynamic-programming scan over `candidate`, not by
-    translating to a backtracking regex (the previous implementation,
-    `re.match("^" + ".*".join(escaped) + "$", candidate)`); confirmed
-    for real, not theoretical: a pattern with ~25 `*`s and a ~40-character
-    non-matching candidate (either one entirely repo-controlled: an
-    ApplicationSet generator's own `path:`, or an `AppProject`'s
-    `sourceRepos`/`destinations`) hung indefinitely, a classic ReDoS
-    shape (`literal*literal*literal*...`, ambiguous about which `*`
-    consumed which character, forcing exponential backtracking on a
-    string that ultimately doesn't match). This scan is O(len(pattern)
-    x len(candidate)) worst case, regardless of how many wildcards the
-    pattern has."""
+    Patterns come from the repo, so this is a dynamic-programming scan,
+    O(len(pattern) * len(candidate)), rather than a backtracking regex
+    open to ReDoS.
+    """
     tokens = _tokenize(pattern)
     length = len(candidate)
     reachable = [False] * (length + 1)
@@ -68,3 +57,99 @@ def _tokenize(pattern: str) -> list[tuple[str, str]]:
             tokens.append((_LITERAL, char))
             i += 1
     return tokens
+
+
+def match_path(pattern: str, candidate: str) -> bool:
+    """Match Go's `path.Match`, used by the git directory generator: `*`, `?` and
+    `[...]` stay within a `/` segment, so `**` is the same as `*`."""
+    pattern_segments = pattern.split("/")
+    candidate_segments = candidate.split("/")
+    if len(pattern_segments) != len(candidate_segments):
+        return False
+    return all(
+        _match_segment(segment, value)
+        for segment, value in zip(pattern_segments, candidate_segments, strict=True)
+    )
+
+
+def _match_segment(pattern: str, value: str) -> bool:
+    if "[" in pattern:
+        # Go negates a class with `^`, fnmatch with `!`.
+        return fnmatch.fnmatchcase(value, pattern.replace("[^", "[!"))
+    return match_glob(pattern, value)
+
+
+# `{a,b}{a,b}...` doubles the alternatives with each group, and the pattern
+# comes from the repository. Real patterns stay far below this.
+_MAX_BRACE_ALTERNATIVES = 256
+
+
+def expand_braces(pattern: str) -> list[str] | None:
+    """The patterns `{a,b}` alternatives stand for, as in gobwas/glob, which
+    Argo CD uses for `directory.include` and AppProject destinations.
+
+    None when they would exceed `_MAX_BRACE_ALTERNATIVES`.
+    """
+    expanded: list[str] = []
+    pending = [pattern]
+    while pending:
+        current = pending.pop()
+        alternatives = _expand_first_braces(current)
+        if alternatives is None:
+            expanded.append(current)
+        else:
+            pending.extend(alternatives)
+        if len(expanded) + len(pending) > _MAX_BRACE_ALTERNATIVES:
+            return None
+    return expanded
+
+
+def _expand_first_braces(pattern: str) -> list[str] | None:
+    """`pattern` with its first `{...}` group expanded, or None without one."""
+    start = pattern.find("{")
+    if start == -1:
+        return None
+    depth = 0
+    parts: list[str] = []
+    part_start = start + 1
+    for index in range(start, len(pattern)):
+        char = pattern[index]
+        if char == "{":
+            depth += 1
+        elif char == "}":
+            depth -= 1
+            if depth == 0:
+                parts.append(pattern[part_start:index])
+                head, tail = pattern[:start], pattern[index + 1 :]
+                return [head + part.strip() + tail for part in parts]
+        elif char == "," and depth == 1:
+            parts.append(pattern[part_start:index])
+            part_start = index + 1
+    return None  # unbalanced: matched literally
+
+
+def match_git_pathspec(pattern: str, candidate: str) -> bool:
+    """Match `git ls-files -- <pattern>`, which the git files generator runs by
+    default: `*` and `?` cross `/`, and a pattern without them also matches the
+    files under a directory of that name."""
+    if not any(char in pattern for char in "*?["):
+        prefix = pattern.strip("/")
+        return candidate == prefix or candidate.startswith(prefix + "/")
+    return fnmatch.fnmatchcase(candidate, pattern)
+
+
+def match_doublestar(pattern: str, candidate: str) -> bool:
+    """Match doublestar's glob, used by the git files generator with
+    `--enable-new-git-file-globbing`: `*` stays within a `/` segment, and `**`
+    also matches no directory at all."""
+    for alternative in expand_braces(pattern) or []:
+        variants = {alternative, alternative.replace("/**/", "/")}
+        if alternative.startswith("**/"):
+            variants.add(alternative[3:])
+        for variant in variants:
+            if "[" in variant:
+                if fnmatch.fnmatchcase(candidate, variant):
+                    return True
+            elif match_glob(variant, candidate):
+                return True
+    return False

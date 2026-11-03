@@ -5,9 +5,8 @@ import json
 from argocd_source_lint.models import Finding, Severity
 from argocd_source_lint.reporters.fingerprint import stable_fingerprint
 
-# GitLab's "Code Quality" format (derived from CodeClimate), not SARIF.
-# Confirmed against the official GitLab docs before implementing: SARIF
-# and GitLab Code Quality are two distinct schemas (see DESIGN.md).
+# GitLab Code Quality is a CodeClimate-derived schema, distinct from SARIF
+# (see DESIGN.md).
 _SEVERITY_BY_SEVERITY = {
     Severity.ERROR: "major",
     Severity.WARNING: "minor",

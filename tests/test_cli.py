@@ -22,14 +22,9 @@ runner = CliRunner()
 
 
 def test_every_rule_class_is_registered_in_cli_rules():
-    """A `Rule` subclass that exists under `rules/` but is never added to
-    `cli.RULES` would otherwise stay invisible to every test here: its
-    own unit test instantiates it and calls `.check()` directly, so it
-    can pass while the real CLI never runs it at all; confirmed for
-    real, not hypothetical: a throwaway rule module left this way left
-    the full suite green. `pkgutil.iter_modules` force-imports every
-    module under `rules/` first, so a rule nobody imports yet is still
-    visible to `Rule.__subclasses__()`."""
+    """A rule missing from `cli.RULES` passes its own unit test but never runs in
+    the CLI. Every module under `rules/` is imported first, so an unimported
+    rule still shows up in `Rule.__subclasses__()`."""
     for module_info in pkgutil.iter_modules(rules_package.__path__, rules_package.__name__ + "."):
         importlib.import_module(module_info.name)
 
@@ -43,23 +38,16 @@ def test_every_rule_class_is_registered_in_cli_rules():
 
 
 def test_every_rule_has_a_default_severity():
-    """The same silent-omission risk as the test above, one dict over:
-    `policy.DEFAULT_RULE_SEVERITIES` is maintained by hand too, and a
-    rule missing from it would still run (its own `.get(RULE_ID, ...)`
-    fallback covers that), but silently drop out of `Policy().rules`:
-    e.g. a future feature that lists every configurable rule and its
-    severity would miss it with no test ever noticing. `unresolvable-
-    generator` is the one deliberate exception: its findings come from
-    `applicationset.discover`, not a `Rule.check()` in `RULES`, but its
-    severity is still policy-configurable."""
+    """`DEFAULT_RULE_SEVERITIES` is maintained by hand: a rule missing from it still
+    runs but drops out of `Policy().rules`. `unresolvable-generator` has no
+    `Rule` class, but its severity is still configurable."""
     registered_ids = {rule.rule_id for rule in RULES} | {applicationset.RULE_ID}
     assert registered_ids == set(DEFAULT_RULE_SEVERITIES)
 
 
 def test_missing_git_exits_2_with_a_clear_error_instead_of_degrading(fixture_repo):
-    """Without this check, a missing `git` silently turns into false
-    `orphan-source` positives on every covered file instead of a clear
-    error (see `git_context.is_git_available`)."""
+    """A missing `git` would otherwise turn into false `orphan-source` findings on
+    every covered file (see `git_context.is_git_available`)."""
     repo_root = fixture_repo("good_repo")
 
     with patch("argocd_source_lint.cli.is_git_available", return_value=False):
@@ -132,7 +120,7 @@ def test_stale_baseline_entry_is_reported_but_does_not_block_ci(fixture_repo, gi
     runner.invoke(app, [str(repo_root), "--write-baseline"])
     # The underlying issue is fixed: the missing path now exists
     # (committed: phantom-target resolves paths via `git ls-tree`, not
-    # the raw working tree, see DESIGN.md "targetRevision drift").
+    # the raw working tree, see DESIGN.md).
     git_commit(
         repo_root,
         {"manifests/does-not-exist/deployment.yaml": "kind: Deployment\n"},
@@ -392,8 +380,8 @@ def test_scan_root_name_with_control_characters_is_shown_not_emitted(git_repo):
 
 @pytest.mark.parametrize("output_format", ["json", "sarif", "junit", "gitlab-codequality"])
 def test_stdout_report_is_utf8_even_when_stdout_encoding_is_cp1252(fixture_repo, output_format):
-    """A redirected stdout on Windows defaults to cp1252; forced here so the
-    Linux CI sees the same thing. The phantom-target message holds a `—`."""
+    """A redirected stdout on Windows defaults to cp1252, forced here so Linux CI
+    sees the same. The phantom-target message holds an em dash (U+2014)."""
     repo_root = fixture_repo("bad_phantom_target")
 
     result = subprocess.run(
@@ -469,3 +457,281 @@ def test_table_format_writes_plain_text_to_output_file(fixture_repo, tmp_path):
     text = output_file.read_text(encoding="utf-8")
     assert "phantom-target" in text
     assert "\x1b[" not in text  # no ANSI codes in a file
+
+
+def _phantom_app(annotations: str = "") -> str:
+    block = f"  annotations:\n{annotations}" if annotations else ""
+    return (
+        "apiVersion: argoproj.io/v1alpha1\nkind: Application\nmetadata:\n  name: web\n"
+        + block
+        + "spec:\n  source:\n    repoURL: https://example.invalid/repo.git\n"
+        "    targetRevision: HEAD\n    path: manifests/nowhere\n"
+    )
+
+
+def test_annotation_with_a_reason_suppresses_that_rule_for_that_application(git_repo):
+    repo_root = git_repo(
+        {
+            "apps/web.yaml": _phantom_app(
+                '    argocd-source-lint/ignore-phantom-target: "created by a Job at sync"\n'
+            ),
+            "manifests/.gitkeep": "",
+        }
+    )
+
+    result = runner.invoke(app, [str(repo_root), "--format", "json"])
+
+    assert result.exit_code == 0
+    assert json.loads(result.stdout)["findings"] == []
+    assert "1 finding(s) suppressed by argocd-source-lint/ignore-<rule>" in result.stderr
+
+
+def test_annotation_without_a_reason_suppresses_nothing_and_says_so(git_repo):
+    repo_root = git_repo(
+        {
+            "apps/web.yaml": _phantom_app('    argocd-source-lint/ignore-phantom-target: ""\n'),
+            "manifests/.gitkeep": "",
+        }
+    )
+
+    result = runner.invoke(app, [str(repo_root), "--format", "json"])
+
+    assert result.exit_code == 1
+    assert [f["rule_id"] for f in json.loads(result.stdout)["findings"]] == ["phantom-target"]
+    assert "has no reason" in " ".join(result.stderr.split())
+
+
+def test_annotation_naming_an_unknown_rule_is_reported(git_repo):
+    repo_root = git_repo(
+        {
+            "apps/web.yaml": _phantom_app('    argocd-source-lint/ignore-phantom-targt: "typo"\n'),
+            "manifests/.gitkeep": "",
+        }
+    )
+
+    result = runner.invoke(app, [str(repo_root), "--format", "json"])
+
+    assert result.exit_code == 1
+    assert "names no known rule" in " ".join(result.stderr.split())
+
+
+def test_annotation_on_an_applicationset_template_reaches_generated_applications(git_repo):
+    repo_root = git_repo(
+        {
+            "appsets/web.yaml": """\
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: web
+spec:
+  generators:
+    - list:
+        elements:
+          - env: dev
+  template:
+    metadata:
+      name: 'web-{{env}}'
+      annotations:
+        argocd-source-lint/ignore-phantom-target: "path created at sync"
+    spec:
+      source:
+        repoURL: https://example.invalid/repo.git
+        targetRevision: HEAD
+        path: manifests/nowhere
+""",
+            "manifests/.gitkeep": "",
+        }
+    )
+
+    result = runner.invoke(app, [str(repo_root), "--format", "json"])
+
+    assert result.exit_code == 0
+    assert json.loads(result.stdout)["findings"] == []
+
+
+def test_suppressed_findings_are_not_written_to_the_baseline(git_repo):
+    repo_root = git_repo(
+        {
+            "apps/web.yaml": _phantom_app(
+                '    argocd-source-lint/ignore-phantom-target: "created by a Job at sync"\n'
+            ),
+            "manifests/.gitkeep": "",
+        }
+    )
+
+    runner.invoke(app, [str(repo_root), "--write-baseline"])
+
+    assert "phantom-target" not in (repo_root / ".argocd-lint-baseline.yaml").read_text()
+
+
+def test_list_rules_prints_every_rule_with_its_default_severity():
+    result = runner.invoke(app, ["--list-rules"])
+
+    assert result.exit_code == 0
+    for rule_id, severity in DEFAULT_RULE_SEVERITIES.items():
+        assert any(
+            line.split()[:2] == [rule_id, severity.value] for line in result.stdout.splitlines()
+        ), rule_id
+
+
+def test_only_runs_just_the_named_rules(fixture_repo):
+    repo_root = fixture_repo("bad_phantom_target")
+
+    result = runner.invoke(app, [str(repo_root), "-f", "json", "--only", "orphan-source"])
+
+    assert result.exit_code == 0
+    assert all(f["rule_id"] == "orphan-source" for f in json.loads(result.stdout)["findings"])
+
+
+def test_skip_leaves_out_the_named_rule(fixture_repo):
+    repo_root = fixture_repo("bad_phantom_target")
+
+    result = runner.invoke(app, [str(repo_root), "-f", "json", "--skip", "phantom-target"])
+
+    assert result.exit_code == 0
+    assert "phantom-target" not in result.stdout
+
+
+def test_unknown_rule_in_only_or_skip_exits_2(fixture_repo):
+    repo_root = fixture_repo("good_repo")
+
+    result = runner.invoke(app, [str(repo_root), "--skip", "phantom-targt"])
+
+    assert result.exit_code == 2
+    assert "phantom-targt" in result.stdout
+
+
+def test_write_baseline_refuses_a_subset_of_rules(fixture_repo):
+    repo_root = fixture_repo("bad_phantom_target")
+
+    result = runner.invoke(app, [str(repo_root), "--write-baseline", "--only", "orphan-source"])
+
+    assert result.exit_code == 2
+    assert not (repo_root / ".argocd-lint-baseline.yaml").exists()
+
+
+def test_skipping_orphan_source_drops_the_scan_roots_notice(git_repo):
+    repo_root = git_repo({"apps/web.yaml": _phantom_app(), "manifests/.gitkeep": ""})
+
+    result = runner.invoke(app, [str(repo_root), "--skip", "orphan-source"])
+
+    assert "scan_roots" not in result.stdout
+
+
+def test_application_with_a_wrong_value_type_is_reported_not_a_crash(git_repo):
+    repo_root = git_repo(
+        {
+            "apps/web.yaml": _phantom_app().replace("targetRevision: HEAD", "targetRevision: 2.0"),
+            "manifests/.gitkeep": "",
+        }
+    )
+
+    result = runner.invoke(app, [str(repo_root), "--format", "json"])
+
+    assert result.exit_code == 0
+    assert json.loads(result.stdout)["findings"] == []
+    assert "is not a valid Application" in " ".join(result.stderr.split())
+
+
+def _pull_request_checkout_adding_an_app(git_repo, git_commit):
+    """`main` has no Application yet. The pull request adds one with its
+    manifests, and the checkout is detached with `main` only on origin."""
+    repo_root = git_repo({"README.md": "x\n"})
+    for args in (["branch", "-M", "main"], ["update-ref", "refs/remotes/origin/main", "HEAD"]):
+        subprocess.run(["git", *args], cwd=repo_root, check=True, capture_output=True)
+    git_commit(
+        repo_root,
+        {
+            "apps/web.yaml": _phantom_app()
+            .replace("targetRevision: HEAD", "targetRevision: main")
+            .replace("path: manifests/nowhere", "path: manifests/web"),
+            "manifests/web/cm.yaml": "kind: ConfigMap\nmetadata:\n  name: web\n",
+        },
+        message="add web",
+    )
+    for args in (["checkout", "-q", "--detach"], ["branch", "-q", "-D", "main"]):
+        subprocess.run(["git", *args], cwd=repo_root, check=True, capture_output=True)
+    return repo_root
+
+
+def test_pull_request_is_checked_against_its_own_content_with_target_branch(git_repo, git_commit):
+    repo_root = _pull_request_checkout_adding_an_app(git_repo, git_commit)
+
+    without = runner.invoke(app, [str(repo_root), "-f", "json"])
+    with_branch = runner.invoke(app, [str(repo_root), "-f", "json", "--target-branch", "main"])
+
+    assert "phantom-target" in without.stdout
+    assert with_branch.exit_code == 0
+    assert json.loads(with_branch.stdout)["findings"] == []
+
+
+def test_target_branch_is_read_from_github_base_ref(git_repo, git_commit, monkeypatch):
+    repo_root = _pull_request_checkout_adding_an_app(git_repo, git_commit)
+    monkeypatch.setenv("GITHUB_BASE_REF", "main")
+
+    result = runner.invoke(app, [str(repo_root), "-f", "json"])
+
+    assert result.exit_code == 0
+    assert json.loads(result.stdout)["findings"] == []
+
+
+def test_repo_urls_identify_this_repository_under_another_url(git_repo):
+    repo_root = git_repo(
+        {
+            ".argocd-lint.yaml": "repo_urls:\n  - https://example.invalid/repo.git\n",
+            "apps/web.yaml": _phantom_app(),
+            "manifests/.gitkeep": "",
+        },
+        origin_url="git@my-ssh-alias:team/repo.git",
+    )
+
+    result = runner.invoke(app, [str(repo_root), "-f", "json"])
+
+    assert [f["rule_id"] for f in json.loads(result.stdout)["findings"]] == ["phantom-target"]
+
+
+def test_no_source_matching_the_origin_is_reported(git_repo):
+    repo_root = git_repo(
+        {"apps/web.yaml": _phantom_app(), "manifests/.gitkeep": ""},
+        origin_url="git@my-ssh-alias:team/repo.git",
+    )
+
+    result = runner.invoke(app, [str(repo_root), "-f", "json"])
+
+    stderr = " ".join(result.stderr.split())
+    assert "No Application source points to this repository" in stderr
+    assert "repo_urls" in stderr
+
+
+def test_staged_application_and_directory_are_checked_as_on_disk(git_repo):
+    """What a pre-commit hook sees: the new files are staged, not committed."""
+    repo_root = git_repo({"README.md": "x\n"})
+    (repo_root / "apps").mkdir()
+    (repo_root / "apps/web.yaml").write_text(
+        _phantom_app().replace("manifests/nowhere", "manifests/web"), encoding="utf-8"
+    )
+    (repo_root / "manifests/web").mkdir(parents=True)
+    (repo_root / "manifests/web/cm.yaml").write_text("kind: ConfigMap\n", encoding="utf-8")
+    subprocess.run(["git", "add", "-A"], cwd=repo_root, check=True, capture_output=True)
+
+    result = runner.invoke(app, [str(repo_root), "-f", "json"])
+
+    assert result.exit_code == 0
+    assert json.loads(result.stdout)["findings"] == []
+
+
+@pytest.mark.parametrize(
+    ("filename", "content"),
+    [
+        (".argocd-lint.yaml", "scan_roots: [unclosed\n"),
+        (".argocd-lint.yaml", "- a list\n"),
+        (".argocd-lint-baseline.yaml", "rule_id: not-a-list\n"),
+    ],
+)
+def test_unreadable_config_or_baseline_exits_2_with_a_message(git_repo, filename, content):
+    repo_root = git_repo({filename: content, "manifests/.gitkeep": ""})
+
+    result = runner.invoke(app, [str(repo_root)])
+
+    assert result.exit_code == 2
+    assert "Can't read" in result.stdout

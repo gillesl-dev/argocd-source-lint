@@ -1,6 +1,6 @@
-"""Every place that names a release must name the one in pyproject.toml.
-The README's CI examples were left one version behind twice (1.1.1, 1.2.1),
-and the GitHub Action/GitLab template install that exact version."""
+"""Every place that names a release must match pyproject.toml: the GitHub Action
+and GitLab template install that exact version, and the README's CI examples
+fell one version behind twice (1.1.1, 1.2.1)."""
 
 from __future__ import annotations
 
@@ -33,3 +33,10 @@ def test_readme_ci_examples_reference_this_release():
     }
 
     assert references == {name: [VERSION] for name in references}
+
+
+def test_every_rule_has_a_section_in_docs_rules():
+    from argocd_source_lint.policy import DEFAULT_RULE_SEVERITIES, RULE_DESCRIPTIONS
+
+    headings = set(re.findall(r"^## (\S+)$", _read("docs/rules.md"), flags=re.MULTILINE))
+    assert set(DEFAULT_RULE_SEVERITIES) == set(RULE_DESCRIPTIONS) <= headings

@@ -5,13 +5,9 @@ from xml.etree import ElementTree as ET
 from argocd_source_lint.models import Finding, Severity
 from argocd_source_lint.reporters.safe_text import visible_controls
 
-# JUnit has no native "warning"/"info" level, only pass/failure/error/
-# skipped. error and unverifiable are the two severities that actually
-# block CI by default (see cli._exit_code); mapped to <failure>.
-# warning/info become <skipped> rather than a plain, silent pass: they
-# ARE something to look at, just not blocking, and a skipped testcase
-# renders visually distinct (grey, not green) in every consumer that
-# matters here (Jenkins, GitLab, Azure DevOps).
+# JUnit has no warning or info level. The severities that fail CI by default
+# (cli._exit_code) become <failure>. The others become <skipped>, which
+# Jenkins, GitLab and Azure DevOps show apart from a pass.
 _FAILING = {Severity.ERROR, Severity.UNVERIFIABLE}
 
 
@@ -39,16 +35,11 @@ def render_findings(findings: list[Finding]) -> str:
 
 
 def _testcase(finding: Finding, seen: dict[tuple[str, str], int]) -> ET.Element:
-    # GitLab's own JUnit parser silently drops every testcase after the
-    # first one sharing the same name, and `name` here is the finding's
-    # message, which two *different* findings (different file/Application)
-    # can share verbatim (e.g. the same copy-pasted typo in two repos'
-    # worth of manifests). A suffix on the repeat keeps every finding
-    # visible instead of one silently vanishing from the report.
+    # GitLab's JUnit parser drops testcases whose name repeats an earlier
+    # one, and two findings in different files can share a message.
     key = (finding.rule_id, finding.message)
     seen[key] = seen.get(key, 0) + 1
-    # XML 1.0 rejects most control characters, which repo content can
-    # carry (see safe_text.py): one of them made the whole report unparseable.
+    # XML 1.0 rejects most control characters, which repo content can carry.
     message = visible_controls(finding.message)
     name = message if seen[key] == 1 else f"{message} (#{seen[key]})"
 

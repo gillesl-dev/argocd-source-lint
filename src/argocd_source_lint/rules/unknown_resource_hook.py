@@ -24,20 +24,14 @@ _HOOK_DELETE_POLICY_ANNOTATION = "argocd.argoproj.io/hook-delete-policy"
 
 
 class UnknownResourceHookRule(Rule):
-    """`argocd.argoproj.io/hook`/`hook-delete-policy` are plain string
-    annotations read by the controller at reconcile time; there's no
-    schema enforcing their value against the closed set of recognized
-    ones. A misspelled value (`presync`, `HookSuceeded`) most likely
-    falls through silently to "not a hook"/"no delete policy", the same
-    architecture already confirmed for `syncOptions`
-    (`unknown-sync-option`) and `sync-wave`. Slightly lower confidence
-    than `unknown-sync-option`: the official docs list the valid values
-    but don't spell out the silent-fallthrough behavior for this
-    specific pair the way they do for sync options (see DESIGN.md).
+    """Detect `hook` and `hook-delete-policy` annotation values Argo CD does not know.
 
-    The closed set itself is also narrowed by the policy's optional
-    `argocd_version`, e.g. `PreDelete` only exists since ArgoCD 3.3.0
-    (see argocd_versions.py)."""
+    Both are plain strings with no schema, so a typo such as `presync` most
+    likely leaves the resource as a normal, non-hook resource instead of
+    failing. The docs list the valid values but do not state the fallback
+    (see DESIGN.md). The optional `argocd_version` policy narrows the set
+    to values that exist in that release (see argocd_versions.py).
+    """
 
     rule_id = RULE_ID
 

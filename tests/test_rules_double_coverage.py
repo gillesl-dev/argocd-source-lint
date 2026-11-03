@@ -83,8 +83,8 @@ def test_two_applications_deploying_the_same_file_to_the_same_place_is_flagged(g
 
 
 def test_same_application_covering_a_file_twice_is_not_flagged(git_repo):
-    """Two sources of the SAME Application overlapping isn't a conflict:
-    it's one sync loop, not two fighting each other."""
+    """Two sources of the same Application overlapping are one sync loop, not
+    two fighting each other."""
     repo_root = git_repo(
         {
             "bootstrap/argocd-apps/app-a.yaml": f"""\
@@ -310,6 +310,36 @@ def test_unresolved_template_namespace_is_not_flagged(git_repo):
         {
             "bootstrap/argocd-apps/app-a.yaml": _app("app-a", namespace="'{{env}}'"),
             "bootstrap/argocd-apps/app-b.yaml": _app("app-b", namespace="'{{env}}'"),
+            "manifests/shared/deployment.yaml": DEPLOYMENT,
+        }
+    )
+
+    assert _run_double_coverage(repo_root) == []
+
+
+def test_overlays_renaming_a_shared_base_are_not_compared(git_repo):
+    """`namePrefix` gives each overlay's resources their own names, so the
+    shared base file is two different objects in the cluster."""
+    repo_root = git_repo(
+        {
+            "bootstrap/argocd-apps/a.yaml": _app("team-a", "overlays/a"),
+            "bootstrap/argocd-apps/b.yaml": _app("team-b", "overlays/b"),
+            "base/kustomization.yaml": "resources:\n  - deployment.yaml\n",
+            "base/deployment.yaml": DEPLOYMENT,
+            "overlays/a/kustomization.yaml": "namePrefix: team-a-\nresources:\n  - ../../base\n",
+            "overlays/b/kustomization.yaml": "namePrefix: team-b-\nresources:\n  - ../../base\n",
+        }
+    )
+
+    assert _run_double_coverage(repo_root) == []
+
+
+def test_same_file_from_two_argocd_instances_is_not_compared(git_repo):
+    repo_root = git_repo(
+        {
+            ".argocd-lint.yaml": "argocd_instances:\n  - clusters/prod\n  - clusters/staging\n",
+            "clusters/prod/apps/web.yaml": _app("web-prod"),
+            "clusters/staging/apps/web.yaml": _app("web-staging"),
             "manifests/shared/deployment.yaml": DEPLOYMENT,
         }
     )

@@ -16,6 +16,14 @@ _BUILT_IN_SIGNATURES_PATH = Path(__file__).parent / "known-operators.yaml"
 
 
 class MissingIgnoreDiffRule(Rule):
+    """Detect operator-managed resources that selfHeal would reset.
+
+    Some operators write fields on resources they derive from a custom
+    resource, such as a generated Secret. Without a matching
+    `ignoreDifferences`, selfHeal reverts them on every sync. The known
+    operators are listed in `known-operators.yaml`.
+    """
+
     rule_id = RULE_ID
 
     def check(
@@ -30,12 +38,8 @@ class MissingIgnoreDiffRule(Rule):
         findings: list[Finding] = []
 
         for app in applications:
-            # Heuristic rule by nature: only Applications with
-            # selfHeal active are concerned. Without it, ArgoCD never
-            # overwrites out-of-Git-managed fields anyway, so the rule has
-            # nothing to say about ANY of its sources (including external
-            # ones: no point flagging them "out of scope" for a risk that
-            # can't occur).
+            # Without selfHeal, Argo CD never overwrites drifted fields, so
+            # skip the whole Application, external sources included.
             if not app.sync_policy_self_heal:
                 continue
 
@@ -77,12 +81,12 @@ def _check_document(
 def _resolve_contexts(
     doc: dict[str, Any], signature: KnownOperatorSignature, resolved_name: str
 ) -> list[dict[str, str]]:
-    """One `str.format()` kwargs dict per resource to check: a single
-    `{"name": resolved_name}` for a plain signature, or one per key of
-    the `name_from_each` mapping (e.g. a Zalando `postgresql` resource's
-    `spec.users`, each becoming `{user}` alongside `{name}`) when set.
-    An empty/missing mapping yields no contexts at all, never guessed
-    at, same principle as everywhere else in this rule."""
+    """Return one `str.format()` kwargs dict per derived resource to check.
+
+    A plain signature yields `{"name": ...}`. With `name_from_each`, each
+    key of that mapping (such as Zalando `spec.users`) adds a `{user}` entry.
+    A missing or empty mapping yields nothing.
+    """
     if signature.name_from_each is None:
         return [{"name": resolved_name}]
 
@@ -154,12 +158,12 @@ def _resolve_value(doc: dict[str, Any], dotted_path: str) -> Any:
 def _has_matching_ignore_diff(
     app: Application, kind: str, name: str, namespace: str | None
 ) -> bool:
-    """The known derived resources (`known-operators.yaml`) are all core
-    kinds (empty `group`), so an `ignoreDifferences` rule explicitly targeting
-    another group can never cover them. A rule with no
-    `namespace` covers every namespace (just like a missing `name` covers
-    every instance); a rule with a `namespace` set must match the
-    triggering resource's namespace."""
+    """Return True if an `ignoreDifferences` rule covers this core resource.
+
+    The derived resources in `known-operators.yaml` are all in the core
+    group, so a rule naming another group never matches. A missing
+    `namespace` or `name` on the rule matches any value.
+    """
     for rule in app.ignore_differences:
         if rule.kind not in (kind, "*"):
             continue

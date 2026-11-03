@@ -41,10 +41,9 @@ def test_bad_fixture_flags_both_expected_secrets(fixture_repo):
 def test_pinned_target_revision_is_checked_against_that_revision_not_head(
     git_repo, git_tag, git_commit
 ):
-    """The whole point of `coverage.py`'s revision-aware snapshot (see
-    DESIGN.md "targetRevision drift"): removing the risky manifest from
-    HEAD must not silence the finding for an Application still pinned to
-    the revision where it's still live in production."""
+    """Removing the risky manifest from HEAD must not hide the finding for an
+    Application still pinned to a revision where it is live (see DESIGN.md
+    "targetRevision drift")."""
     repo_root = git_repo(
         {
             "bootstrap/argocd-apps/pg-prod-app.yaml": """\
@@ -166,10 +165,8 @@ metadata:
 
 
 def test_ignore_diff_with_mismatched_namespace_does_not_suppress_finding(git_repo):
-    """An `ignoreDifferences` rule scoped to a `namespace` different from
-    the triggering resource's must not be considered as covering the risk
-    (otherwise an `ignoreDifferences` meant for an unrelated Secret with
-    the same name would mask the real expected finding)."""
+    """Otherwise an `ignoreDifferences` entry meant for an unrelated Secret with the
+    same name in another namespace would mask the finding."""
     repo_root = git_repo(
         {
             "bootstrap/argocd-apps/pg-app.yaml": """\
@@ -235,8 +232,8 @@ metadata:
 
 
 def test_cert_manager_signature_resolves_name_from_spec_secret_name(git_repo):
-    """Verifies that `name_from` generalizes beyond `metadata.name`: for
-    cert-manager, the derived Secret's name comes from `spec.secretName`."""
+    """`name_from` is not limited to `metadata.name`: cert-manager derives the
+    Secret name from `spec.secretName`."""
     repo_root = git_repo(
         {
             "bootstrap/argocd-apps/tls-app.yaml": """\
@@ -271,9 +268,8 @@ spec:
 
 
 def test_external_source_without_self_heal_produces_no_finding_at_all(git_repo):
-    """selfHeal disabled entirely disarms the rule: it must say nothing at
-    all, not even an `info` "out of scope", about an external source of an
-    Application where the risk it checks can't occur anyway."""
+    """Without selfHeal the risk cannot occur, so the rule says nothing about an
+    external source, not even an `info` "out of scope"."""
     repo_root = git_repo(
         {
             "bootstrap/argocd-apps/external-app.yaml": """\

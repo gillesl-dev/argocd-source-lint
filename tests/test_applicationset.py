@@ -157,10 +157,8 @@ spec:
 
 
 def test_git_files_generator_ignores_a_params_file_that_is_a_yaml_alias_bomb(git_repo):
-    """A tiny "billion laughs" params file (each anchor aliases the
-    previous one twice) must never reach `_flatten_params`' `str()` on
-    the fully-expanded value: confirmed to hang for real before
-    `fsutil.is_within_budget` existed."""
+    """A "billion laughs" params file must be rejected before `_flatten_params`
+    calls `str()` on the fully expanded value, which hangs."""
     layers = 30
     lines = ['a0: &a0 ["x"]']
     for i in range(1, layers):
@@ -205,10 +203,8 @@ spec:
 
 def test_git_directories_generator_honors_a_pinned_revision(git_repo, git_tag, git_commit):
     """The generator's own `revision` is independent of the template's
-    `targetRevision` (confirmed against the upstream Git generator docs):
-    discovering from the checked-out working tree regardless of it
-    would silently generate Applications for today's directory
-    structure instead of the pinned one's."""
+    `targetRevision` (upstream Git generator docs). Reading the working tree
+    would generate Applications from today's layout instead of the pinned one."""
     repo_root = git_repo(
         {
             "apps/old/deployment.yaml": "kind: Deployment\n",
@@ -325,9 +321,8 @@ spec:
 
 
 def test_matrix_generator_with_more_than_two_children_is_flagged_unresolvable(git_repo):
-    """ArgoCD's real matrix generator only supports exactly 2 child
-    generators and errors out on more (see DESIGN.md): this must not be
-    silently treated as a 3-way cartesian product."""
+    """ArgoCD's matrix generator accepts exactly 2 children and errors out on
+    more (see DESIGN.md), so this is not a 3-way cartesian product."""
     repo_root = git_repo(
         {
             "bootstrap/appsets/matrix-appset.yaml": """\
@@ -369,12 +364,9 @@ spec:
 
 
 def test_matrix_generator_over_the_combination_cap_is_flagged_instead_of_computed(git_repo):
-    """Confirmed for real, not theoretical: two `list` generators of 5,000
-    small elements each (individually well under the alias-bomb node
-    budget, since that budget catches a densely *aliased* document, not a
-    large but flat one) produced 25,000,000 combinations in ~7s for the
-    combine step alone, before a single generated Application is even
-    built or run through a rule. This must be flagged, not computed."""
+    """Large flat `list` generators stay under the alias-bomb node budget, which
+    only catches aliasing, yet two of 5,000 elements make 25,000,000
+    combinations before any rule runs."""
     n = 200  # 200 x 200 = 40,000 > _MAX_MATRIX_COMBINATIONS (10,000)
     side_a = "\n".join(f"                - region: r{i}" for i in range(n))
     side_b = "\n".join(f"                - env: e{i}" for i in range(n))
@@ -517,9 +509,8 @@ spec:
 
 
 def test_list_generator_with_selector_is_flagged_unresolvable(git_repo):
-    """A `selector` (label filter) changes which params ArgoCD keeps:
-    evaluating it would require guessing at label matches, so it's
-    flagged rather than expanded as if the selector weren't there."""
+    """A `selector` filters params by label. Evaluating it would mean guessing
+    label matches, so the generator is flagged instead of expanded without it."""
     repo_root = git_repo(
         {
             "bootstrap/appsets/list-appset.yaml": """\
@@ -792,8 +783,6 @@ spec:
 
 
 def test_merge_generator_with_unresolvable_override_still_uses_base(git_repo):
-    """The override generator being unresolvable doesn't hide the base
-    entries: they're fully known, only the (flagged) override is not."""
     repo_root = git_repo(
         {
             "bootstrap/appsets/merge-appset.yaml": """\
@@ -834,11 +823,8 @@ spec:
 def test_matrix_generator_with_a_git_child_honors_its_pinned_revision(
     git_repo, git_tag, git_commit
 ):
-    """Every existing matrix/merge test combines `list` generators only:
-    nesting never exercised a `git` child's own revision handling
-    (fixed in isolation for a bare `git` generator; this checks the fix
-    actually reaches it through `_resolve_matrix`'s recursive dispatch,
-    not just when `git` is the top-level generator)."""
+    """Checks that a `git` child's pinned revision is honored through
+    `_resolve_matrix`'s recursive dispatch, not only at the top level."""
     repo_root = git_repo(
         {
             "apps/old/deployment.yaml": "kind: Deployment\n",
@@ -887,9 +873,6 @@ spec:
 
 
 def test_merge_generator_with_a_git_base_and_a_list_override(git_repo):
-    """Every existing merge test uses `list` for both the base and the
-    override: this checks merge-by-key still works when the base
-    comes from a `git` generator's discovered params instead."""
     repo_root = git_repo(
         {
             "clusters/dev.json": '{"cluster": {"name": "dev"}}',
@@ -937,9 +920,8 @@ spec:
 
 
 def test_generated_application_is_checked_by_existing_rules(git_repo):
-    """The whole point: a generated Application is a plain `Application`
-    from the rules' point of view: no special-casing needed in
-    phantom-target (or any other rule) to catch a real bug in it."""
+    """A generated Application is a plain `Application` to the rules: none of
+    them needs special-casing to catch a bug in it."""
     repo_root = git_repo(
         {
             "bootstrap/appsets/list-appset.yaml": """\
@@ -974,3 +956,72 @@ spec:
     assert findings[0].rule_id == "phantom-target"
     assert findings[0].application == "myapp-dev"
     assert "manifests/does-not-exist-dev" in findings[0].message
+
+
+def test_git_files_generator_path_is_the_directory_of_the_file(git_repo):
+    """As in Argo CD: `{{path}}` is the folder holding the file, and
+    `{{path.filename}}` the file itself."""
+    repo_root = git_repo(
+        {
+            "envs/dev/config.json": '{"env": "dev"}',
+            "bootstrap/appsets/files-appset.yaml": """\
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: files-appset
+spec:
+  generators:
+    - git:
+        repoURL: https://example.invalid/repo.git
+        revision: HEAD
+        files:
+          - path: envs/*/config.json
+  template:
+    metadata:
+      name: 'app-{{env}}-{{path.filenameNormalized}}'
+    spec:
+      source:
+        repoURL: https://example.invalid/repo.git
+        targetRevision: HEAD
+        path: '{{path}}'
+""",
+        }
+    )
+
+    applications, findings = _discover(repo_root)
+
+    assert findings == []
+    assert applications[0].sources[0].path == "envs/dev"
+    assert applications[0].name == "app-dev-config-json"
+
+
+def test_template_rendering_an_invalid_application_is_reported_not_raised(git_repo):
+    repo_root = git_repo(
+        {
+            "bootstrap/appsets/bad.yaml": """\
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: bad
+spec:
+  generators:
+    - list:
+        elements:
+          - env: dev
+  template:
+    metadata:
+      name: 'app-{{env}}'
+    spec:
+      source:
+        repoURL: https://example.invalid/repo.git
+        targetRevision: 2.0
+        path: manifests
+""",
+        }
+    )
+
+    applications, findings = _discover(repo_root)
+
+    assert applications == []
+    assert len(findings) == 1
+    assert "invalid Application" in findings[0].message

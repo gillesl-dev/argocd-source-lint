@@ -4,10 +4,10 @@ from collections import defaultdict
 from pathlib import Path
 from typing import Any
 
-from argocd_source_lint.coverage import covered_file_paths_for_application
+from argocd_source_lint.coverage import covered_file_paths_for_application, renamed_by_kustomize
 from argocd_source_lint.fsutil import load_yaml_documents
 from argocd_source_lint.models import Application, Finding, Severity
-from argocd_source_lint.policy import Policy
+from argocd_source_lint.policy import Policy, argocd_instance
 from argocd_source_lint.rules.base import Rule
 
 RULE_ID = "double-coverage"
@@ -32,13 +32,13 @@ _ResourceKey = tuple[tuple[str, str], str | None, str, str | None]
 
 
 class DoubleCoverageRule(Rule):
-    """The mirror image of `orphan-source`: a resource covered by more than
-    one *different* Application that deploys it to the same place, which
-    ArgoCD would sync from two independent loops; it can flap between
-    whatever each Application last applied. The same file deployed to two
-    different clusters or namespaces (the usual ApplicationSet pattern) is
-    two distinct resources, not a conflict. A file covered twice by two
-    sources of the *same* Application isn't flagged either: one sync loop."""
+    """Detect a resource deployed to the same place by two different Applications.
+
+    Argo CD syncs it from two independent loops, so it flaps between
+    whatever each Application last applied. The same file sent to different
+    clusters or namespaces is two resources, and two sources of one
+    Application share a single sync loop, so neither is flagged.
+    """
 
     rule_id = RULE_ID
 
@@ -56,9 +56,15 @@ class DoubleCoverageRule(Rule):
             cluster = _cluster(app)
             if cluster is None:
                 continue
+            # The same server URL seen from two Argo CD instances is two clusters.
+            instance = argocd_instance(app.source_file, policy.argocd_instances)
+            cluster = (f"{instance}:{cluster[0]}", cluster[1])
+            renamed = renamed_by_kustomize(app, repo_root, local_origin)
             for identity, readable in covered_file_paths_for_application(
                 app, repo_root, local_origin
             ):
+                if identity in renamed:
+                    continue
                 for doc in load_yaml_documents(readable):
                     key = _resource_key(doc, cluster, app.destination_namespace)
                     if key is not None:
@@ -80,8 +86,10 @@ def _determined(value: Any) -> str | None:
 
 
 def _cluster(app: Application) -> tuple[str, str] | None:
-    """A destination can name its cluster by URL or by name. The two forms
-    aren't compared with each other, so an undecidable pair is never flagged."""
+    """Return the destination cluster as `("server", url)` or `("name", name)`.
+
+    The two forms are never compared, so a server/name pair is not flagged.
+    """
     if server := _determined(app.destination_server):
         return ("server", server)
     if name := _determined(app.destination_name):
@@ -99,8 +107,8 @@ def _resource_key(
     name = metadata.get("name") if isinstance(metadata.get("name"), str) else None
     if kind in CLUSTER_SCOPED_KINDS:
         return (cluster, None, kind, name)
-    # ArgoCD's destination namespace only applies to namespace-scoped
-    # resources that don't set metadata.namespace themselves.
+    # Argo CD applies the destination namespace only when the resource
+    # does not set metadata.namespace itself.
     own_namespace = metadata.get("namespace")
     namespace = _determined(own_namespace if own_namespace else destination_namespace)
     if namespace is None:
