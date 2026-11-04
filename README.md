@@ -304,8 +304,8 @@ uv run pytest
 For implementation details, see [DESIGN.md](./DESIGN.md). To add a rule or an operator
 signature, see [CONTRIBUTING.md](./CONTRIBUTING.md).
 
-This project is developed with AI coding assistants (Claude Code). The rules are written from
-ArgoCD's source code, which is cited where each behavior is implemented, and the test suite
+This project is developed with AI coding assistants (Claude Code). The rules follow ArgoCD's
+source code, which the comments cite wherever the behavior isn't obvious, and the test suite
 (500+ tests) runs on Linux and Windows. Known limitations and false positives are listed under
 [Limitations](#limitations).
 
