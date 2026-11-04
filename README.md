@@ -70,6 +70,28 @@ fix it.
 A revision that isn't in the checkout at all can't be checked. `phantom-target` and
 `broken-values-ref` report it as `unverifiable` instead of guessing.
 
+## Limitations
+
+- Helm charts and Kustomize overlays are not rendered. A resource a chart template produces
+  never exists as a file, so no rule sees it. `orphan-source` does follow the local files a
+  `kustomization.yaml` references; remote ones are skipped.
+- A source in another Git repository can't be inspected. It is reported as `info`.
+- The `list`, `git`, `matrix` and `merge` ApplicationSet generators are resolved locally,
+  and the Applications they produce go through every rule. `clusters`, `scmProvider`,
+  `pullRequest` and `plugin` generators, `goTemplate: true`, `templatePatch` and `selector`
+  give `unresolvable-generator` instead, and the files those Applications may deploy are
+  reported by `orphan-source` as `info`.
+- The repository is read as one GitOps tree. A template repository with one tree per
+  cluster gets `duplicate-application-name` for names repeated across trees, unless the
+  trees are listed in `argocd_instances`.
+- Nothing that depends on the live cluster is checked.
+- Known false positives, to be fixed: `sourceHydrator` sources, Kustomize options set in the
+  Application itself (`components`, `patches`, `namePrefix`, `nameSuffix`, `namespace`), an
+  AppProject that lists destinations both by `server` and by `name`, `group: '*'` in
+  `ignoreDifferences`, and `spec.sources: []`. The
+  `unknown-resource-hook` message also says such a resource is applied as a plain one, when
+  ArgoCD never applies it.
+
 ## Using it on an existing repository
 
 The first run on an established repository may report findings you don't want to fix right
@@ -140,7 +162,7 @@ against the change itself. The branch is read from `GITHUB_BASE_REF` (GitHub) or
 `--target-branch main`.
 
 Each tag of the GitHub Action and the GitLab component installs its own release of the tool,
-so `@v1.4.0` always runs 1.4.0. A new release reaches your CI only when you move the tag.
+so `@v1.4.1` always runs 1.4.1. On GitHub, `@v1` follows the latest 1.x release.
 
 ### GitHub Actions
 
@@ -159,7 +181,7 @@ jobs:
         with:
           fetch-depth: 0
 
-      - uses: gillesl-dev/argocd-source-lint@v1.4.0
+      - uses: gillesl-dev/argocd-source-lint@v1.4.1
 ```
 
 `fetch-depth: 0` fetches every branch and tag, so Applications pinned to another branch or a
@@ -190,7 +212,7 @@ published in the CI/CD Catalog.
 
 ```yaml
 include:
-  - component: $CI_SERVER_FQDN/<your-gitlab-group>/argocd-source-lint/lint@v1.4.0
+  - component: $CI_SERVER_FQDN/<your-gitlab-group>/argocd-source-lint/lint@v1.4.1
 ```
 
 GitLab runs merge request pipelines only when the project's own `.gitlab-ci.yml` asks for
@@ -230,7 +252,7 @@ The hook needs Python 3.11 or later as pre-commit's default Python.
 ```yaml
 repos:
   - repo: https://github.com/gillesl-dev/argocd-source-lint
-    rev: v1.4.0
+    rev: v1.4.1
     hooks:
       - id: argocd-source-lint
 ```
@@ -252,23 +274,6 @@ repos:
 | `argocd_version` | none | Your ArgoCD version, such as `"3.2.0"`. `unknown-sync-option` and `unknown-resource-hook` then also report values that version doesn't know yet, such as the Application-level `Prune` sync option before 3.4.0 |
 | `known_operators` | none | More operator signatures for `missing-ignore-diff`, added to the built-in ones (see [docs/rules.md](./docs/rules.md#missing-ignore-diff)) |
 
-
-## Limitations
-
-- Helm charts and Kustomize overlays are not rendered. A resource a chart template produces
-  never exists as a file, so no rule sees it. `orphan-source` does follow the local files a
-  `kustomization.yaml` references; remote ones are skipped.
-- A source in another Git repository can't be inspected. It is reported as `info`.
-- The `list`, `git`, `matrix` and `merge` ApplicationSet generators are resolved locally,
-  and the Applications they produce go through every rule. `clusters`, `scmProvider`,
-  `pullRequest` and `plugin` generators, `goTemplate: true`, `templatePatch` and `selector`
-  give `unresolvable-generator` instead, and the files those Applications may deploy are
-  reported by `orphan-source` as `info`.
-- The repository is read as one GitOps tree. A template repository with one tree per
-  cluster gets `duplicate-application-name` for names repeated across trees, unless the
-  trees are listed in `argocd_instances`.
-- Nothing that depends on the live cluster is checked.
-
 ## Compared to other tools
 
 None of the tools below documents a rule for orphan sources, missing `ignoreDifferences`,
@@ -282,6 +287,7 @@ phantom targets, or double coverage (checked against their documentation in Nove
 | [argocd-diff-preview](https://github.com/dag-andersen/argocd-diff-preview) | Starts a throwaway cluster with ArgoCD (needs Docker), or uses an existing ArgoCD | Shows the rendered manifest diff on a pull request |
 | [kubechecks](https://github.com/zapier/kubechecks) | Yes | Schema/policy checks (`kubepug`, `kubeconform`, `conftest`) plus a live-state diff comment on a pull request |
 | [argocd-lint](https://github.com/harchuk/argocd-lint) | No, except its optional server dry run | Best-practice rules for `Application`, `ApplicationSet` and `AppProject`, extensible with Rego |
+| [drydock](https://github.com/sholdee/drydock) | No | Renders, tests and diffs ArgoCD Applications offline, with diagnostics for rendering, health checks and AppProjects |
 | [glint](https://github.com/lukashankeln/glint) | No | Renders Helm and Kustomize, then applies your own CEL policies to ArgoCD Applications, Flux HelmReleases and plain resources |
 | [conftest](https://www.conftest.dev/) / [kubeconform](https://github.com/yannh/kubeconform) | No | Generic OPA policy checks and schema validation, not aware of ArgoCD's semantics. The [CRDs catalog](https://github.com/datreeio/CRDs-catalog) has schemas for ArgoCD's resources |
 
@@ -295,6 +301,11 @@ uv run pytest
 
 For implementation details, see [DESIGN.md](./DESIGN.md). To add a rule or an operator
 signature, see [CONTRIBUTING.md](./CONTRIBUTING.md).
+
+This project is developed with AI coding assistants (Claude Code). The rules are written from
+ArgoCD's source code, which is cited where each behavior is implemented, and the test suite
+(500+ tests) runs on Linux and Windows. Known limitations and false positives are listed under
+[Limitations](#limitations).
 
 ## License
 

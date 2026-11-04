@@ -6,7 +6,11 @@ from pathlib import Path
 
 from argocd_source_lint.coverage import covered_files_for_application, has_skip_rendering_marker
 from argocd_source_lint.fsutil import iter_yaml_files
-from argocd_source_lint.git_context import external_path_sources, is_local_repo_url
+from argocd_source_lint.git_context import (
+    external_path_sources,
+    is_local_repo_url,
+    tracked_paths,
+)
 from argocd_source_lint.globs import match_glob
 from argocd_source_lint.models import Application, Finding, Severity
 from argocd_source_lint.policy import Policy
@@ -59,6 +63,9 @@ class OrphanSourceRule(Rule):
                 else:
                     covered.add(Path(rel_path))
 
+        # An untracked or ignored file never reaches Argo CD, so it can't be
+        # orphaned.
+        tracked = tracked_paths(repo_root)
         for scan_root in policy.scan_roots:
             scan_dir = (repo_root / scan_root).resolve()
             if not scan_dir.is_dir():
@@ -66,6 +73,8 @@ class OrphanSourceRule(Rule):
             for candidate in iter_yaml_files(scan_dir):
                 resolved = candidate.resolve()
                 relative = resolved.relative_to(repo_root)
+                if tracked is not None and relative.as_posix() not in tracked:
+                    continue
                 if relative in covered:
                     continue
                 if any(_glob_covers(p, relative.as_posix()) for p in covered_globs):

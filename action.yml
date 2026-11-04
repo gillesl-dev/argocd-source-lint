@@ -76,7 +76,7 @@ runs:
         "$PYTHON" -m venv "$RUNNER_TEMP/argocd-source-lint"
         bin="$RUNNER_TEMP/argocd-source-lint/bin"
         [ -d "$bin" ] || bin="$RUNNER_TEMP/argocd-source-lint/Scripts"  # Windows runners
-        "$bin/python" -m pip install --disable-pip-version-check "argocd-source-lint==1.4.0"
+        "$bin/python" -m pip install --disable-pip-version-check "argocd-source-lint==1.4.1"
 
     - name: Run argocd-source-lint
       id: lint

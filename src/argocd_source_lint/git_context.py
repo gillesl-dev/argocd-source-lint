@@ -269,6 +269,24 @@ def list_tree_paths(repo_root: Path, revision: str, pathspec: str) -> list[str]:
     return [path for path in result.stdout.split("\0") if path]
 
 
+def tracked_paths(repo_root: Path) -> frozenset[str] | None:
+    """Paths in the Git index, relative to `repo_root`, or None if git fails.
+
+    Staged files count, untracked and ignored ones don't: only a committed
+    file can reach Argo CD.
+    """
+    result = subprocess.run(
+        ["git", "ls-files", "-z", "--cached"],
+        cwd=repo_root,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+    )
+    if result.returncode != 0:
+        return None
+    return frozenset(path for path in result.stdout.split("\0") if path)
+
+
 _FULL_TREE_CACHE: dict[tuple[Path, str], frozenset[str]] = {}
 
 

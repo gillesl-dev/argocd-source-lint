@@ -142,3 +142,5 @@ new positive case for that variant.
    yet.
 4. Push the annotated tag, then create the GitHub Release from it. A pushed tag does not become
    a Release by itself.
+5. Move the `v1` tag to the new release (`git tag -f v1 "vX.Y.Z^{}"` then
+   `git push -f origin v1`), so `@v1` users of the Action get it.

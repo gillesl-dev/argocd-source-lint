@@ -54,10 +54,11 @@ Other options:
 
 Default severity: `error`.
 
-A YAML file under one of the `scan_roots` folders that no Application source covers.
-ArgoCD never applies it, so a change to it has no effect, and ArgoCD doesn't report it. Typical
-causes: a source `path` that was renamed, a `directory.include` that misses the file, or a
-leftover from a removed component.
+A YAML file tracked by Git under one of the `scan_roots` folders that no Application source
+covers. ArgoCD never applies it, so a change to it has no effect, and ArgoCD doesn't report
+it. Typical causes: a source `path` that was renamed, a `directory.include` that misses the
+file, or a leftover from a removed component. Untracked and gitignored files are not
+checked, since they never reach ArgoCD.
 
 Fix: point a source at the file, delete it, or add it to `exclude_paths`. The rule does
 nothing until `scan_roots` is set.

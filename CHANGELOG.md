@@ -5,6 +5,20 @@ All notable changes to this project are documented in this file, following
 
 ## [Unreleased]
 
+## [1.4.1] - 2026-11-04
+
+### Fixed
+
+- `orphan-source` reported files Git doesn't track, such as a gitignored local secret or a
+  file not yet added. Only files in the Git index are checked now, so a local or pre-commit
+  run gives the same result as CI.
+
+### Changed
+
+- `Development Status` is now `4 - Beta` on PyPI.
+- The GitHub Action has a `v1` tag that follows the latest 1.x release.
+- The project's own CI uses `actions/checkout@v7` and `astral-sh/setup-uv@v10`.
+
 ## [1.4.0] - 2026-11-04
 
 ### Added

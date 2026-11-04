@@ -6,7 +6,8 @@ Guide for coding agents working on this repository. Human contributors: see
 ## Ground rules
 
 - Don't commit, push, tag or rewrite history. Propose the command and wait for the maintainer.
-  Commit messages have no trailer naming a tool or an agent.
+  Commits made with an agent end with a single `Assisted-by: <tool>` trailer, not
+  `Co-Authored-By`, as the README's Development section says.
 - No network access at lint time, and no cluster access in any rule. A source in another Git
   repository is reported as not covered, never fetched (DESIGN.md "Single-repository scope").
 - Check Argo CD behavior in the Argo CD source or docs before encoding it in a rule. Cite the

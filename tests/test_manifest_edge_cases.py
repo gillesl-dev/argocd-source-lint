@@ -780,3 +780,23 @@ def test_sparse_checkout_keeps_the_files_it_leaves_out(git_repo):
     assert not (repo_root / "charts").exists()
 
     assert _lint(repo_root)[1] == []
+
+
+def test_orphan_source_only_reports_files_in_git(git_repo):
+    repo_root = git_repo(
+        {
+            ".argocd-lint.yaml": "scan_roots:\n  - manifests/\n",
+            ".gitignore": "manifests/local-*.yaml\n",
+            "apps/web.yaml": _app("    targetRevision: HEAD\n    path: manifests/web\n"),
+            "manifests/web/cm.yaml": CM,
+        }
+    )
+    (repo_root / "manifests" / "local-secret.yaml").write_bytes(CM.encode())
+    (repo_root / "manifests" / "draft.yaml").write_bytes(CM.encode())
+    (repo_root / "manifests" / "staged.yaml").write_bytes(CM.encode())
+    _commit(repo_root, "add", "manifests/staged.yaml")
+
+    result = runner.invoke(app, [str(repo_root), "-f", "json"])
+    files = [f["file"] for f in json.loads(result.stdout)["findings"]]
+
+    assert files == ["manifests/staged.yaml"]
