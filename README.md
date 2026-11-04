@@ -15,6 +15,8 @@ that is never applied, or a misspelled sync option or hook value that it ignores
 such as a `$values` file that doesn't exist, only show up once the change is merged and
 synced. This tool reports both on the pull request.
 
+Why it exists, and what it found on a production repo: [docs/why-this-exists.md](./docs/why-this-exists.md).
+
 ## Quick start
 
 It needs Python 3.11 or later and `git` on `PATH`. From the root of the Git repository that
