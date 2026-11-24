@@ -109,6 +109,60 @@ def test_invalid_document_keeps_the_ones_before_it_and_is_reported(git_repo):
     assert "`apps/web.yaml` is not valid YAML" in stderr
 
 
+def test_deeply_nested_yaml_file_is_skipped_not_a_crash(git_repo):
+    """1.4.1 crashed with RecursionError and exit code 1, the code for lint errors."""
+    repo_root = git_repo({"other/deep.yaml": "a: " + "[" * 5_000 + "]" * 5_000 + "\n"})
+
+    result = runner.invoke(app, [str(repo_root)])
+
+    assert not isinstance(result.exception, RecursionError)
+    assert result.exit_code == 0
+    # The table report prints notices on stdout.
+    assert "`other/deep.yaml`: nesting deeper than 250 levels, skipped" in " ".join(
+        result.stdout.split()
+    )
+
+
+def test_files_a_skipped_application_may_deploy_are_not_orphan_errors(git_repo):
+    """The skipped file mentions Argo CD, so it may hold the Application that
+    deploys `manifests/`: its orphans must be `info`, not `error`."""
+    deep = "[" * 300 + "]" * 300
+    application = _app("    targetRevision: HEAD\n    path: manifests\n").replace(
+        "  name: web\n", f"  name: web\n  labels:\n    deep: {deep}\n"
+    )
+    repo_root = git_repo(
+        {
+            ".argocd-lint.yaml": "scan_roots: [manifests/]\n",
+            "bootstrap/web.yaml": application,
+            "manifests/cm.yaml": CM,
+        }
+    )
+
+    result = runner.invoke(app, [str(repo_root), "-f", "json", "--show-info"])
+
+    orphans = [f for f in json.loads(result.stdout)["findings"] if f["rule_id"] == "orphan-source"]
+    assert [f["severity"] for f in orphans] == ["info"]
+    assert "bootstrap/web.yaml" in orphans[0]["message"]
+    assert result.exit_code == 0
+
+
+def test_brackets_inside_quotes_comments_and_block_scalars_are_not_nesting(git_repo):
+    many = "[" * 300
+    application = _app(
+        "    targetRevision: HEAD\n    path: manifests\n"
+        f"    # {many}\n"
+        "    helm:\n"
+        f"      values: |\n        a: '{many}'\n"
+        f'      releaseName: "{many}"\n'
+    )
+    repo_root = git_repo({"bootstrap/web.yaml": application, "manifests/cm.yaml": CM})
+
+    result = runner.invoke(app, [str(repo_root)])
+
+    assert "skipped" not in " ".join(result.stderr.split())
+    assert "1 ArgoCD Application(s) discovered" in " ".join(result.stdout.split())
+
+
 def test_duplicate_key_in_an_application_is_reported(git_repo):
     repo_root = git_repo(
         {"apps/web.yaml": _app("    targetRevision: HEAD\n    path: a\n    path: b\n")}
@@ -227,6 +281,9 @@ def test_matrix_second_generator_can_use_the_first_ones_parameters(git_repo):
                 f"          - git:\n              repoURL: {ORIGIN}\n              revision: HEAD\n"
                 "              directories:\n                - path: apps/*\n"
                 f"          - git:\n              repoURL: {ORIGIN}\n              revision: HEAD\n"
+                # Two git children both set `path`: Argo CD's matrix fails unless
+                # one has a `pathParamPrefix` (Generators-Matrix.md).
+                "              pathParamPrefix: target\n"
                 "              files:\n"
                 "                - path: 'envs/{{path.basename}}/config.json'\n",
                 "missing/{{env}}",

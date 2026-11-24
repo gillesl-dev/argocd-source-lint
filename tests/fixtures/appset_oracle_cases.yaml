@@ -1,0 +1,475 @@
+# ApplicationSets whose expansion is compared with Argo CD's own code.
+# Each case is a repository: `files`, plus `appset` at bootstrap/appset.yaml.
+# Expected results: appset_oracle_expected.json, written by
+# tools/argocd-oracle/regenerate.py (see CONTRIBUTING.md).
+#
+# Every ApplicationSet sets its namespace and the template its project, which
+# Argo CD otherwise leaves empty where this tool assumes `argocd`/`default`.
+
+- name: list-basic
+  appset: |
+    apiVersion: argoproj.io/v1alpha1
+    kind: ApplicationSet
+    metadata: {name: s, namespace: argocd}
+    spec:
+      generators:
+        - list:
+            elements:
+              - env: dev
+                url: https://dev.invalid
+              - env: prod
+                url: https://prod.invalid
+      template:
+        metadata: {name: 'app-{{env}}'}
+        spec:
+          project: default
+          source: {repoURL: https://example.invalid/repo.git, targetRevision: HEAD, path: 'apps/{{env}}'}
+          destination: {server: '{{url}}', namespace: '{{env}}'}
+
+- name: list-values-map
+  appset: |
+    apiVersion: argoproj.io/v1alpha1
+    kind: ApplicationSet
+    metadata: {name: s, namespace: argocd}
+    spec:
+      generators:
+        - list:
+            elements:
+              - env: dev
+                values: {dir: d1, ns: team-a}
+      template:
+        metadata: {name: 'app-{{env}}'}
+        spec:
+          project: default
+          source: {repoURL: https://example.invalid/repo.git, targetRevision: HEAD, path: 'apps/{{values.dir}}'}
+          destination: {server: https://kubernetes.default.svc, namespace: '{{values.ns}}'}
+
+- name: list-non-string-value
+  appset: |
+    apiVersion: argoproj.io/v1alpha1
+    kind: ApplicationSet
+    metadata: {name: s, namespace: argocd}
+    spec:
+      generators:
+        - list:
+            elements:
+              - env: dev
+                replicas: 3
+      template:
+        metadata: {name: 'app-{{env}}'}
+        spec:
+          project: default
+          source: {repoURL: https://example.invalid/repo.git, targetRevision: HEAD, path: 'apps/{{env}}'}
+          destination: {server: https://kubernetes.default.svc, namespace: dev}
+
+- name: elements-yaml-top-level-strings
+  appset: |
+    apiVersion: argoproj.io/v1alpha1
+    kind: ApplicationSet
+    metadata: {name: s, namespace: argocd}
+    spec:
+      generators:
+        - list:
+            elementsYaml: |
+              - env: dev
+                replicas: 3
+              - env: prod
+      template:
+        metadata: {name: 'app-{{env}}'}
+        spec:
+          project: default
+          source: {repoURL: https://example.invalid/repo.git, targetRevision: HEAD, path: 'apps/{{env}}'}
+          destination: {server: https://kubernetes.default.svc, namespace: '{{env}}'}
+
+- name: git-directories-normalized-dots
+  files:
+    apps/my.app/cm.yaml: "kind: ConfigMap\n"
+    apps/Other_App/cm.yaml: "kind: ConfigMap\n"
+    apps/.hidden/cm.yaml: "kind: ConfigMap\n"
+  appset: |
+    apiVersion: argoproj.io/v1alpha1
+    kind: ApplicationSet
+    metadata: {name: s, namespace: argocd}
+    spec:
+      generators:
+        - git:
+            repoURL: https://example.invalid/repo.git
+            revision: HEAD
+            directories:
+              - path: apps/*
+      template:
+        metadata: {name: '{{path.basenameNormalized}}'}
+        spec:
+          project: default
+          source: {repoURL: https://example.invalid/repo.git, targetRevision: HEAD, path: '{{path}}'}
+          destination: {server: https://kubernetes.default.svc, namespace: '{{path[1]}}'}
+
+- name: git-directories-exclude
+  files:
+    apps/a/cm.yaml: "kind: ConfigMap\n"
+    apps/b/cm.yaml: "kind: ConfigMap\n"
+    apps/c/cm.yaml: "kind: ConfigMap\n"
+  appset: |
+    apiVersion: argoproj.io/v1alpha1
+    kind: ApplicationSet
+    metadata: {name: s, namespace: argocd}
+    spec:
+      generators:
+        - git:
+            repoURL: https://example.invalid/repo.git
+            revision: HEAD
+            directories:
+              - path: apps/*
+              - path: apps/b
+                exclude: true
+      template:
+        metadata: {name: 'app-{{path.basename}}'}
+        spec:
+          project: default
+          source: {repoURL: https://example.invalid/repo.git, targetRevision: HEAD, path: '{{path}}'}
+          destination: {server: https://kubernetes.default.svc, namespace: default}
+
+- name: git-files-value-formatting
+  files:
+    envs/dev/config.yaml: "env: dev\nenabled: yes\nreplicas: 1000000\nratio: 1.0\nempty:\nmode: 0755\n"
+  appset: |
+    apiVersion: argoproj.io/v1alpha1
+    kind: ApplicationSet
+    metadata: {name: s, namespace: argocd}
+    spec:
+      generators:
+        - git:
+            repoURL: https://example.invalid/repo.git
+            revision: HEAD
+            files:
+              - path: envs/*/config.yaml
+      template:
+        metadata: {name: 'app-{{env}}-{{path.filenameNormalized}}'}
+        spec:
+          project: default
+          source:
+            repoURL: https://example.invalid/repo.git
+            targetRevision: HEAD
+            path: 'm/{{enabled}}/{{replicas}}/{{ratio}}/{{empty}}/{{mode}}'
+          destination: {server: https://kubernetes.default.svc, namespace: '{{path.basename}}'}
+
+- name: git-files-nested-and-lists
+  files:
+    clusters/prod.json: '{"cluster": {"name": "prod", "tags": ["eu", "blue"]}}'
+  appset: |
+    apiVersion: argoproj.io/v1alpha1
+    kind: ApplicationSet
+    metadata: {name: s, namespace: argocd}
+    spec:
+      generators:
+        - git:
+            repoURL: https://example.invalid/repo.git
+            revision: HEAD
+            files:
+              - path: clusters/*.json
+      template:
+        metadata: {name: 'app-{{cluster.name}}'}
+        spec:
+          project: default
+          source: {repoURL: https://example.invalid/repo.git, targetRevision: HEAD, path: 'm/{{cluster.tags.0}}/{{cluster.tags.1}}'}
+          destination: {server: https://kubernetes.default.svc, namespace: '{{cluster.name}}'}
+
+- name: git-files-list-of-objects-and-empty-file
+  files:
+    envs/all.yaml: "- env: dev\n- env: prod\n"
+    envs/none/config.yaml: ""
+  appset: |
+    apiVersion: argoproj.io/v1alpha1
+    kind: ApplicationSet
+    metadata: {name: s, namespace: argocd}
+    spec:
+      generators:
+        - git:
+            repoURL: https://example.invalid/repo.git
+            revision: HEAD
+            files:
+              - path: envs/all.yaml
+        - git:
+            repoURL: https://example.invalid/repo.git
+            revision: HEAD
+            files:
+              - path: envs/*/config.yaml
+      template:
+        metadata: {name: 'app-{{path.basenameNormalized}}-{{path.filename}}'}
+        spec:
+          project: default
+          source: {repoURL: https://example.invalid/repo.git, targetRevision: HEAD, path: '{{path}}'}
+          destination: {server: https://kubernetes.default.svc, namespace: default}
+
+- name: git-files-at-the-root
+  files:
+    config.json: '{"env": "root"}'
+  appset: |
+    apiVersion: argoproj.io/v1alpha1
+    kind: ApplicationSet
+    metadata: {name: s, namespace: argocd}
+    spec:
+      generators:
+        - git:
+            repoURL: https://example.invalid/repo.git
+            revision: HEAD
+            files:
+              - path: config.json
+      template:
+        metadata: {name: 'app-{{env}}'}
+        spec:
+          project: default
+          source: {repoURL: https://example.invalid/repo.git, targetRevision: HEAD, path: '{{path}}'}
+          destination: {server: https://kubernetes.default.svc, namespace: '{{path[0]}}x'}
+
+- name: git-files-unparseable
+  files:
+    envs/dev.yaml: "env: dev\n"
+    envs/broken.yaml: "just-a-string\n"
+  appset: |
+    apiVersion: argoproj.io/v1alpha1
+    kind: ApplicationSet
+    metadata: {name: s, namespace: argocd}
+    spec:
+      generators:
+        - git:
+            repoURL: https://example.invalid/repo.git
+            revision: HEAD
+            files:
+              - path: envs/*.yaml
+      template:
+        metadata: {name: 'app-{{env}}'}
+        spec:
+          project: default
+          source: {repoURL: https://example.invalid/repo.git, targetRevision: HEAD, path: 'm/{{env}}'}
+          destination: {server: https://kubernetes.default.svc, namespace: default}
+
+- name: git-path-param-prefix-and-values
+  files:
+    apps/web/cm.yaml: "kind: ConfigMap\n"
+  appset: |
+    apiVersion: argoproj.io/v1alpha1
+    kind: ApplicationSet
+    metadata: {name: s, namespace: argocd}
+    spec:
+      generators:
+        - git:
+            repoURL: https://example.invalid/repo.git
+            revision: HEAD
+            pathParamPrefix: app
+            values:
+              ns: 'team-{{app.path.basename}}'
+              other: '{{ missing }}'
+            directories:
+              - path: apps/*
+      template:
+        metadata: {name: '{{app.path.basename}}'}
+        spec:
+          project: default
+          source: {repoURL: https://example.invalid/repo.git, targetRevision: HEAD, path: '{{app.path}}'}
+          destination: {server: https://kubernetes.default.svc, namespace: '{{values.ns}}'}
+
+- name: matrix-list-by-list
+  appset: |
+    apiVersion: argoproj.io/v1alpha1
+    kind: ApplicationSet
+    metadata: {name: s, namespace: argocd}
+    spec:
+      generators:
+        - matrix:
+            generators:
+              - list:
+                  elements: [{env: dev}, {env: prod}]
+              - list:
+                  elements: [{app: web}, {app: api}]
+      template:
+        metadata: {name: '{{app}}-{{env}}'}
+        spec:
+          project: default
+          source: {repoURL: https://example.invalid/repo.git, targetRevision: HEAD, path: 'apps/{{app}}/{{env}}'}
+          destination: {server: https://kubernetes.default.svc, namespace: '{{env}}'}
+
+- name: matrix-same-key-two-values
+  appset: |
+    apiVersion: argoproj.io/v1alpha1
+    kind: ApplicationSet
+    metadata: {name: s, namespace: argocd}
+    spec:
+      generators:
+        - matrix:
+            generators:
+              - list:
+                  elements: [{env: dev}]
+              - list:
+                  elements: [{env: prod}]
+      template:
+        metadata: {name: 'app-{{env}}'}
+        spec:
+          project: default
+          source: {repoURL: https://example.invalid/repo.git, targetRevision: HEAD, path: 'apps/{{env}}'}
+          destination: {server: https://kubernetes.default.svc, namespace: default}
+
+- name: matrix-two-gits-without-prefix
+  files:
+    apps/web/cm.yaml: "kind: ConfigMap\n"
+    envs/web/config.json: '{"env": "prod"}'
+  appset: |
+    apiVersion: argoproj.io/v1alpha1
+    kind: ApplicationSet
+    metadata: {name: s, namespace: argocd}
+    spec:
+      generators:
+        - matrix:
+            generators:
+              - git:
+                  repoURL: https://example.invalid/repo.git
+                  revision: HEAD
+                  directories: [{path: apps/*}]
+              - git:
+                  repoURL: https://example.invalid/repo.git
+                  revision: HEAD
+                  files: [{path: 'envs/{{path.basename}}/config.json'}]
+      template:
+        metadata: {name: 'app-{{env}}'}
+        spec:
+          project: default
+          source: {repoURL: https://example.invalid/repo.git, targetRevision: HEAD, path: 'm/{{env}}'}
+          destination: {server: https://kubernetes.default.svc, namespace: default}
+
+- name: matrix-two-gits-with-prefix
+  files:
+    apps/web/cm.yaml: "kind: ConfigMap\n"
+    apps/api/cm.yaml: "kind: ConfigMap\n"
+    envs/web/config.json: '{"env": "prod"}'
+    envs/api/config.json: '{"env": "dev"}'
+  appset: |
+    apiVersion: argoproj.io/v1alpha1
+    kind: ApplicationSet
+    metadata: {name: s, namespace: argocd}
+    spec:
+      generators:
+        - matrix:
+            generators:
+              - git:
+                  repoURL: https://example.invalid/repo.git
+                  revision: HEAD
+                  directories: [{path: apps/*}]
+              - git:
+                  repoURL: https://example.invalid/repo.git
+                  revision: HEAD
+                  pathParamPrefix: target
+                  files: [{path: 'envs/{{path.basename}}/config.json'}]
+      template:
+        metadata: {name: '{{path.basename}}-{{env}}'}
+        spec:
+          project: default
+          source: {repoURL: https://example.invalid/repo.git, targetRevision: HEAD, path: '{{target.path}}'}
+          destination: {server: https://kubernetes.default.svc, namespace: '{{env}}'}
+
+- name: merge-override
+  appset: |
+    apiVersion: argoproj.io/v1alpha1
+    kind: ApplicationSet
+    metadata: {name: s, namespace: argocd}
+    spec:
+      generators:
+        - merge:
+            mergeKeys: [server]
+            generators:
+              - list:
+                  elements:
+                    - {server: dev, path: base-dev}
+                    - {server: prod, path: base-prod}
+              - list:
+                  elements:
+                    - {server: dev, path: override-dev}
+                    - {server: other, path: ignored}
+      template:
+        metadata: {name: 'app-{{server}}'}
+        spec:
+          project: default
+          source: {repoURL: https://example.invalid/repo.git, targetRevision: HEAD, path: '{{path}}'}
+          destination: {server: https://kubernetes.default.svc, namespace: '{{server}}'}
+
+- name: merge-single-child
+  appset: |
+    apiVersion: argoproj.io/v1alpha1
+    kind: ApplicationSet
+    metadata: {name: s, namespace: argocd}
+    spec:
+      generators:
+        - merge:
+            mergeKeys: [env]
+            generators:
+              - list:
+                  elements: [{env: dev}]
+      template:
+        metadata: {name: 'app-{{env}}'}
+        spec:
+          project: default
+          source: {repoURL: https://example.invalid/repo.git, targetRevision: HEAD, path: 'apps/{{env}}'}
+          destination: {server: https://kubernetes.default.svc, namespace: default}
+
+- name: merge-repeated-key
+  appset: |
+    apiVersion: argoproj.io/v1alpha1
+    kind: ApplicationSet
+    metadata: {name: s, namespace: argocd}
+    spec:
+      generators:
+        - merge:
+            mergeKeys: [env]
+            generators:
+              - list:
+                  elements: [{env: dev}, {env: dev}]
+              - list:
+                  elements: [{env: dev}]
+      template:
+        metadata: {name: 'app-{{env}}'}
+        spec:
+          project: default
+          source: {repoURL: https://example.invalid/repo.git, targetRevision: HEAD, path: 'apps/{{env}}'}
+          destination: {server: https://kubernetes.default.svc, namespace: default}
+
+- name: merge-missing-versus-empty-key
+  appset: |
+    apiVersion: argoproj.io/v1alpha1
+    kind: ApplicationSet
+    metadata: {name: s, namespace: argocd}
+    spec:
+      generators:
+        - merge:
+            mergeKeys: [env]
+            generators:
+              - list:
+                  elements: [{name: base, env: ''}]
+              - list:
+                  elements: [{name: override}]
+      template:
+        metadata: {name: 'app-{{name}}'}
+        spec:
+          project: default
+          source: {repoURL: https://example.invalid/repo.git, targetRevision: HEAD, path: 'apps/{{name}}'}
+          destination: {server: https://kubernetes.default.svc, namespace: default}
+
+- name: generator-level-template
+  appset: |
+    apiVersion: argoproj.io/v1alpha1
+    kind: ApplicationSet
+    metadata: {name: s, namespace: argocd}
+    spec:
+      generators:
+        - list:
+            elements: [{env: dev}]
+            template:
+              metadata: {}
+              spec:
+                project: default
+                source: {repoURL: https://example.invalid/repo.git, targetRevision: HEAD, path: 'override/{{env}}'}
+                destination: {}
+      template:
+        metadata: {name: 'app-{{env}}'}
+        spec:
+          project: default
+          source: {repoURL: https://example.invalid/repo.git, targetRevision: HEAD, path: 'apps/{{env}}'}
+          destination: {server: https://kubernetes.default.svc, namespace: default}

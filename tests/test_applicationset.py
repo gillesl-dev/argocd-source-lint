@@ -156,9 +156,10 @@ spec:
     assert applications[0].sources[0].path == "manifests/prod"
 
 
-def test_git_files_generator_ignores_a_params_file_that_is_a_yaml_alias_bomb(git_repo):
-    """A "billion laughs" params file must be rejected before `_flatten_params`
-    calls `str()` on the fully expanded value, which hangs."""
+def test_git_files_generator_rejects_a_params_file_that_is_a_yaml_alias_bomb(git_repo):
+    """A "billion laughs" params file must be rejected before its values are
+    formatted, which would hang. Argo CD rejects it too ("document contains
+    excessive aliasing"), so the ApplicationSet generates nothing."""
     layers = 30
     lines = ['a0: &a0 ["x"]']
     for i in range(1, layers):
@@ -197,8 +198,9 @@ spec:
 
     applications, findings = _discover(repo_root)
 
-    assert findings == []
-    assert applications == []  # the bomb file is treated as unparseable
+    assert applications == []
+    assert len(findings) == 1
+    assert "aliasing" in findings[0].message
 
 
 def test_git_directories_generator_honors_a_pinned_revision(git_repo, git_tag, git_commit):
@@ -992,7 +994,8 @@ spec:
 
     assert findings == []
     assert applications[0].sources[0].path == "envs/dev"
-    assert applications[0].name == "app-dev-config-json"
+    # Argo CD's SanitizeName keeps dots.
+    assert applications[0].name == "app-dev-config.json"
 
 
 def test_template_rendering_an_invalid_application_is_reported_not_raised(git_repo):

@@ -83,6 +83,14 @@ A revision that isn't in the checkout at all can't be checked. `phantom-target` 
   `pullRequest` and `plugin` generators, `goTemplate: true`, `templatePatch` and `selector`
   give `unresolvable-generator` instead, and the files those Applications may deploy are
   reported by `orphan-source` as `info`.
+- Manifests are read as YAML 1.2, while Kubernetes reads them as YAML 1.1: `enabled: yes` is
+  a string here but the boolean `true` for Kubernetes, so a `list` generator element written
+  that way passes here and is rejected by ArgoCD. Params files and `elementsYaml` are read as
+  YAML 1.1, like ArgoCD, except that an explicit tag such as `!!str yes` is ignored there and
+  the value read as `true`.
+- A YAML file whose `[`/`{` nest more than 250 levels deep is skipped with a notice. If it
+  mentions Argo CD resources, every `orphan-source` finding becomes `info`, since it may hold
+  the Application that deploys them.
 - The repository is read as one GitOps tree. A template repository with one tree per
   cluster gets `duplicate-application-name` for names repeated across trees, unless the
   trees are listed in `argocd_instances`.
