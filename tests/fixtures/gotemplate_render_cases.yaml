@@ -1,0 +1,354 @@
+# Go templates rendered by tools/argocd-oracle with Argo CD's own
+# utils.Render.Replace, the function the controller applies to each string of a
+# `goTemplate: true` ApplicationSet. The results are in
+# gotemplate_render_expected.json; regenerate it after any change here
+# (CONTRIBUTING.md, "ApplicationSet expectations from Argo CD").
+#
+# Each case renders `template` with the params set named by `params`
+# ("default" when absent) and the `options` (goTemplateOptions). Params reach
+# the template as JSON, so their numbers are float64, as in the controller.
+#
+# `unsupported` marks a case this tool deliberately does not render; the test
+# then expects the "not supported by this tool" outcome, whatever Argo CD does.
+
+params:
+  default:
+    n: 1
+    f: 1.5
+    big: 1000000
+    huge: 1.0e+21
+    small: 0.00001
+    neg: -3
+    e20: 1.0e+20
+    frac: 123456.789
+    t: true
+    fl: false
+    z: null
+    s: a
+    e: ""
+    num: "123"
+    "yes": "yes"
+    "on": "on"
+    tilde: "~"
+    hex: "0x1"
+    multi: "line1\nline2"
+    html: "<a&b>"
+    uni: "héllo wörld"
+    l: [x, "y"]
+    el: []
+    nl: [1, 2.5, true, null, s]
+    m: {b: 2, a: 1, c: {d: e}}
+    em: {}
+    keyuni: {"clé": v, "Zed": 1, "alpha": 2}
+    items: [{name: a, port: 80}, {name: null}, {other: 1}]
+    path: {path: apps/foo, basename: foo, segments: [apps, foo]}
+    branch: "Feature/ABC_123 Long Branch"
+  empty: {}
+  argo_one: {one: two}
+  argo_two: {one: two, three: four}
+  argo_quoted: {one: '"hello" world', three: four}
+  argo_self: {one: "{{one}}"}
+  argo_other: {one: "{{two}}"}
+  argo_image: {replicas: 3, image: {name: busybox, version: latest}}
+  argo_hpa_on: {replicas: 3, hpa: {enabled: true, minReplicas: 1, maxReplicas: 5}}
+  argo_hpa_off: {replicas: 3, hpa: {enabled: false, minReplicas: 1, maxReplicas: 5}}
+  argo_volumes:
+    replicas: 3
+    volumes: [{name: volume-one, emptyDir: {}}, {name: volume-two, emptyDir: {}}]
+  argo_admin: {admin: {admin-ca: value admin ca, admin-jks: value admin jks}}
+  argo_admin_escaped: {admin: {admin-ca: 'value "admin" ca with \', admin-jks: value admin jks}}
+  argo_quote: {quote: '"'}
+  argo_data: {data: a data string}
+  argo_unused: {unused: this is not used}
+  argo_to_yaml: {foo: {bar: {bool: true, number: 2, str: Hello world}}}
+  argo_from_yaml: {value: "hello: world"}
+  argo_bad_yaml: {value: "non\n compliant\n yaml"}
+  argo_from_yaml_array: {value: "- hello world\n- bonjour tout le monde"}
+
+cases:
+  # ---- Argo CD's TestRenderTemplateParamsGoTemplate (applicationset/utils/utils_test.go) ----
+  - {template: '{{ .one }}', params: argo_one}
+  - {template: '{{ .one }}', params: argo_self}
+  - {template: '{{ .one }}', params: argo_other}
+  - {template: '{{.one}}{{.one}}', params: argo_one}
+  - {template: '{{.one}}{{.three}}', params: argo_two}
+  - {template: '{{.one}} {{.three}}', params: argo_quoted}
+  - {template: '{{ .image.version }}', params: argo_image}
+  - {template: '{{ .image.name }}:{{ .image.version }}', params: argo_image}
+  - {template: '{{ if .hpa.enabled }}{{ .hpa.maxReplicas }}{{ else }}{{ .replicas }}{{ end }}', params: argo_hpa_on}
+  - {template: '{{ if .hpa.enabled }}{{ .hpa.maxReplicas }}{{ else }}{{ .replicas }}{{ end }}', params: argo_hpa_off}
+  - {template: '{{ range .volumes }}[{{ .name }}]{{ end }}', params: argo_volumes}
+  - {template: '{{ index .admin "admin-ca" }}, {{ index .admin "admin-jks" }}', params: argo_admin}
+  - {template: '{{ index .admin "admin-ca" }}, \\ "Hello world", {{ index .admin "admin-jks" }}', params: argo_admin_escaped}
+  - {template: '{{.quote}}', params: argo_quote}
+  - {template: '{{functiondoesnotexist}}', params: argo_data}
+  - {template: '{{.data.test}}', params: argo_data}
+  - {template: '--> {{.doesnotexist}} <--', params: argo_unused}
+  - {template: '--> {{.doesnotexist}} <--', params: argo_unused, options: [missingkey=error]}
+  - {template: '{{ toYaml . | indent 2 }}', params: argo_to_yaml}
+  - {template: '{{ get (fromYaml .value) "hello" }}', params: argo_from_yaml}
+  - {template: '{{ get (fromYaml .value) "hello" }}', params: argo_bad_yaml}
+  - {template: '{{ fromYamlArray .value | last }}', params: argo_from_yaml_array}
+  - {template: '{{ fromYamlArray .value | last }}', params: argo_bad_yaml}
+
+  # ---- Text, actions and whitespace trimming ----
+  - {template: ''}
+  - {template: 'plain text, no action'}
+  - {template: 'a {{ "{{" }} b'}
+  - {template: 'a {{- .s -}} b'}
+  - {template: 'a {{- /* c */ -}} b'}
+  - {template: "a  \n\t {{- .s }} \n b"}
+  - {template: "a {{ .s -}} \n\t b"}
+  - {template: 'a{{-3}}b'}
+  - {template: 'a {{- 3 -}} b'}
+  - {template: "{{\n.s\n}}"}
+  - {template: '{{.s}}{{.s}}'}
+  - {template: '{{/* only a comment */}}'}
+  - {template: 'x{{- /* comment */}}y'}
+  - {template: '{{ /* not a comment */ }}'}
+  - {template: '{{/* comment */ .s }}'}
+  - {template: '{{ .s'}
+  - {template: '{{ .s }'}
+  - {template: '}} {{ .s }}'}
+  - {template: '{{}}'}
+  - {template: '{{ end }}'}
+
+  # ---- Literals ----
+  - {template: '{{ "lit" }}|{{ `raw\n` }}|{{ "esc\t\"q\"\\" }}'}
+  - {template: '{{ "\x41é" }}'}
+  - {template: '{{ "\q" }}'}
+  - {template: '{{ 3 }}|{{ -2 }}|{{ +4 }}|{{ 1.5 }}|{{ 1.0 }}|{{ 1e3 }}|{{ 1e21 }}|{{ 100000000.0 }}|{{ 0.000001 }}'}
+  - {template: '{{ true }}|{{ false }}'}
+  - {template: '{{ nil }}'}
+  - {template: '{{ 0x1F }}', unsupported: hexadecimal number}
+  - {template: '{{ 1_000 }}', unsupported: number with underscores}
+  - {template: "{{ 'a' }}", unsupported: character constant}
+  - {template: '{{ 9223372036854775807 }}'}
+  - {template: '{{ 9223372036854775808 }}', unsupported: integer over int64}
+  - {template: '{{ 1i }}', unsupported: complex number}
+  - {template: '{{ "unterminated }}'}
+
+  # ---- Fields, dot, $ and printing ----
+  - {template: '{{ .n }}|{{ .f }}|{{ .big }}|{{ .huge }}|{{ .small }}|{{ .neg }}|{{ .e20 }}|{{ .frac }}'}
+  - {template: '{{ .z }}'}
+  - {template: '{{ .missing }}'}
+  - {template: '{{ .missing.x }}'}
+  - {template: '{{ .missing.x.y }}'}
+  - {template: '{{ .z.x }}'}
+  - {template: '{{ .s.x }}'}
+  - {template: '{{ .l.x }}'}
+  - {template: '{{ .n.x }}'}
+  - {template: '{{ .m }}'}
+  - {template: '{{ .em }}|{{ .el }}'}
+  - {template: '{{ .l }}'}
+  - {template: '{{ .nl }}'}
+  - {template: '{{ .t }}|{{ .fl }}'}
+  - {template: '{{ .keyuni }}'}
+  - {template: '{{ .items }}'}
+  - {template: '{{ .m.c.d }}|{{ .m.c }}'}
+  - {template: '{{ .path.basename }}-{{ index .path.segments 1 }}'}
+  - {template: '{{ . }}', params: argo_two}
+  - {template: '{{ $ }}', params: argo_two}
+  - {template: '{{ $.s }}'}
+  - {template: '{{ .s .t }}'}
+  - {template: '{{ .s | .t }}'}
+  - {template: '{{ (.s) }}|{{ ( .m.c.d ) }}'}
+  - {template: '{{ (.m).a }}', unsupported: field of a parenthesized expression}
+  - {template: '{{ .missing }}', params: empty}
+  - {template: '{{ .s }}', params: empty}
+
+  # ---- Variables ----
+  - {template: '{{ $x := .s }}{{ $x = "b" }}{{ $x }}'}
+  - {template: '{{ $x := .m }}{{ $x.c.d }}|{{ $x.missing }}'}
+  - {template: '{{ $x := .z }}{{ $x.y }}'}
+  - {template: '{{ $y }}'}
+  - {template: '{{ $y = 1 }}'}
+  - {template: '{{ if true }}{{ $x := 1 }}{{ end }}{{ $x }}'}
+  - {template: '{{ $x := 1 }}{{ if true }}{{ $x = 2 }}{{ end }}{{ $x }}'}
+  - {template: '{{ $x := 1 }}{{ if true }}{{ $x := 2 }}{{ $x }}{{ end }}{{ $x }}'}
+  - {template: '{{ $x, $y := 1 }}'}
+  - {template: '{{ $x := 1 | 2 }}'}
+
+  # ---- if / else / with ----
+  - {template: '{{ if .e }}y{{ else }}n{{ end }}{{ if .el }}y{{ else }}n{{ end }}{{ if .em }}y{{ else }}n{{ end }}{{ if .z }}y{{ else }}n{{ end }}{{ if .missing }}y{{ else }}n{{ end }}{{ if 0 }}y{{ else }}n{{ end }}'}
+  - {template: '{{ if .s }}y{{ end }}{{ if .n }}y{{ end }}{{ if .t }}y{{ end }}{{ if .l }}y{{ end }}{{ if .m }}y{{ end }}{{ if 0.0 }}y{{ else }}n{{ end }}{{ if .fl }}y{{ else }}n{{ end }}'}
+  - {template: '{{ if .fl }}a{{ else if .e }}b{{ else if .s }}c{{ else }}d{{ end }}'}
+  - {template: '{{ if $v := .s }}{{ $v }}{{ end }}'}
+  - {template: '{{ if .s }}{{ $w := 1 }}{{ else }}{{ $w }}{{ end }}'}
+  - {template: '{{ with .missing }}y{{ else }}n{{ end }}'}
+  - {template: '{{ with .s }}{{ . }}{{ end }}'}
+  - {template: '{{ with .m }}{{ .a }}-{{ .c.d }}-{{ $.s }}{{ end }}'}
+  - {template: '{{ with .missing }}a{{ else with .s }}{{ . }}{{ end }}'}
+  - {template: '{{ with .z }}y{{ else }}n{{ end }}'}
+  - {template: '{{ with $v := .m.c }}{{ $v.d }}{{ end }}'}
+  - {template: '{{ if .s }}unclosed'}
+  - {template: '{{ if }}x{{ end }}'}
+  - {template: '{{ else }}'}
+  - {template: '{{ if .s }}a{{ else }}b{{ else }}c{{ end }}'}
+
+  # ---- range ----
+  - {template: '{{ range .missing }}x{{ end }}'}
+  - {template: '{{ range .z }}x{{ end }}'}
+  - {template: '{{ range .el }}x{{ else }}empty{{ end }}'}
+  - {template: '{{ range .em }}x{{ else }}none{{ end }}'}
+  - {template: '{{ range .missing }}x{{ else }}none{{ end }}'}
+  - {template: '{{ range .s }}x{{ end }}'}
+  - {template: '{{ range .n }}x{{ end }}'}
+  - {template: '{{ range .t }}x{{ end }}'}
+  - {template: '{{ range 3 }}{{ . }}{{ end }}'}
+  - {template: '{{ range 0 }}x{{ else }}zero{{ end }}'}
+  - {template: '{{ range -2 }}x{{ else }}neg{{ end }}'}
+  - {template: '{{ range $i := 2 }}{{ $i }}{{ end }}'}
+  - {template: '{{ range $i, $v := 2 }}{{ $i }}{{ end }}'}
+  - {template: '{{ range 1.5 }}x{{ end }}'}
+  - {template: '{{ range .l }}[{{ . }}]{{ end }}'}
+  - {template: '{{ range $k, $v := .m }}{{ $k }}={{ $v }};{{ end }}'}
+  - {template: '{{ range $i, $v := .l }}{{ $i }}:{{ $v }};{{ end }}'}
+  - {template: '{{ range $v := .l }}{{ $v }};{{ end }}'}
+  - {template: '{{ range $k := .m }}{{ $k }};{{ end }}'}
+  - {template: '{{ range .keyuni }}{{ . }};{{ end }}'}
+  - {template: '{{ range $k, $v := .keyuni }}{{ $k }};{{ end }}'}
+  - {template: '{{ range .nl }}[{{ . }}]{{ end }}'}
+  - {template: '{{ range .items }}{{ .name }};{{ end }}'}
+  - {template: '{{ range .nl }}{{ .x }}{{ end }}'}
+  - {template: '{{ range .l }}{{ $.s }}{{ . }}{{ end }}'}
+  - {template: '{{ range $a := .l }}{{ range $b := $.l }}{{ $a }}{{ $b }},{{ end }}{{ end }}'}
+  - {template: '{{ range .l }}{{ if true }}{{ break }}{{ end }}{{ . }}{{ end }}'}
+  - {template: '{{ range .l }}{{ continue }}{{ . }}{{ end }}done'}
+  - {template: '{{ range .l }}a{{ break }}b{{ end }}'}
+  - {template: '{{ break }}'}
+  - {template: '{{ range .l }}{{ $x := . }}{{ end }}{{ $x }}'}
+  - {template: '{{ range $x = .l }}{{ end }}', unsupported: range assigning existing variables}
+  - {template: '{{ range .l }}x'}
+  - {template: '{{ range .l }}{{ break }}{{ else }}empty{{ end }}'}
+  - {template: '{{ range .l }}{{ else }}{{ break }}{{ end }}'}
+  - {template: '{{ range .l }}{{ else if .s }}x{{ end }}'}
+  - {template: '{{ range .l }}{{ $y := 1 }}{{ end }}{{ if false }}{{ $y }}{{ end }}'}
+
+  # ---- Variable scopes checked when parsing, not when executing ----
+  - {template: '{{ if true }}{{ $x := 1 }}{{ end }}{{ if false }}{{ $x }}{{ end }}'}
+  - {template: '{{ with .s }}{{ $x := 1 }}{{ end }}{{ if false }}{{ $x }}{{ end }}'}
+  - {template: '{{ if $v := .s }}{{ end }}{{ if false }}{{ $v }}{{ end }}'}
+  - {template: '{{ if .s }}{{ else with .s }}x{{ end }}'}
+  - {template: '{{ $x := .missing }}{{ $x.y }}'}
+
+  # ---- Lexer corner cases ----
+  - {template: '{{ .s | }}'}
+  - {template: '{{3-}}'}
+  - {template: '{{ - }}'}
+  - {template: '{{ 010 }}', unsupported: leading zero}
+  - {template: '{{ .a-b }}'}
+  - {template: '{{ .s}}{{.s }}{{.s -}} {{- .s}}'}
+  - {template: "{{- .s -}}\n"}
+  - {template: '{{ "a" "b" }}'}
+  - {template: '{{ ( .s ) ( .s ) }}'}
+  - {template: '{{ (1) }}|{{ ("x") }}'}
+  - {template: '{{ .s | (.t) }}'}
+  - {template: '{{ .é }}'}
+
+  # ---- Constructs that stay out of scope ----
+  - {template: '{{ define "x" }}a{{ end }}{{ template "x" }}', unsupported: define and template}
+  - {template: '{{ block "x" . }}a{{ end }}', unsupported: block}
+  - {template: '{{ template "nope" }}', unsupported: template}
+
+  # ---- Options ----
+  - {template: '{{ .missing }}', options: [missingkey=error]}
+  - {template: '{{ .s }}', options: [missingkey=error]}
+  - {template: '{{ .z }}', options: [missingkey=error]}
+  - {template: '{{ .missing.x }}', options: [missingkey=error]}
+  - {template: '{{ .m.zz }}', options: [missingkey=error]}
+  - {template: '{{ if .missing }}y{{ else }}n{{ end }}', options: [missingkey=error]}
+  - {template: '{{ .missing }}', options: [missingkey=default]}
+  - {template: '{{ .missing }}', options: [missingkey=invalid]}
+  - {template: '{{ .missing }}', options: [missingkey=zero], unsupported: missingkey=zero}
+  - {template: '{{ .s }}', options: [bogus]}
+  - {template: '{{ .s }}', options: [missingkey=bogus]}
+  - {template: 'no action', options: [bogus]}
+
+  # ---- Functions: unknown to Argo CD, removed by Argo CD ----
+  - {template: '{{ nosuchfunc .s }}'}
+  - {template: '{{ if false }}{{ nosuchfunc }}{{ end }}'}
+  - {template: '{{ env "HOME" }}'}
+  - {template: '{{ expandenv "$HOME" }}'}
+  - {template: '{{ getHostByName "localhost" }}'}
+
+  # ---- Functions (probe of the 1.6.0 plan) ----
+  - {template: '{{ eq .n 1 }}'}
+  - {template: '{{ eq .n 1.0 }}'}
+  - {template: '{{ eq .f 1.5 }}'}
+  - {template: '{{ eq .s "a" }}'}
+  - {template: '{{ eq .n .f }}'}
+  - {template: '{{ lt .n 2 }}'}
+  - {template: '{{ eq .missing 1 }}'}
+  - {template: '{{ eq .z nil }}'}
+  - {template: '{{ ne .s "b" }}'}
+  - {template: '{{ eq .t true }}'}
+  - {template: '{{ if eq .n 1 }}y{{ else }}n{{ end }}'}
+  - {template: '{{ eq .s "a" "b" }}'}
+  - {template: '{{ eq .num 123 }}'}
+  - {template: '{{ index .path.segments 5 }}'}
+  - {template: '{{ index .m "a" }}'}
+  - {template: '{{ index .m "zz" }}'}
+  - {template: '{{ index .missing "a" }}'}
+  - {template: '{{ len .l }}'}
+  - {template: '{{ len .missing }}'}
+  - {template: '{{ len .s }}'}
+  - {template: '{{ toYaml .m }}'}
+  - {template: '{{ toYaml .nl }}'}
+  - {template: '{{ toYaml .n }}'}
+  - {template: '{{ toYaml .f }}'}
+  - {template: '{{ toYaml .huge }}'}
+  - {template: '{{ toYaml .big }}'}
+  - {template: '{{ toYaml .e20 }}'}
+  - {template: '{{ toYaml .frac }}'}
+  - {template: '{{ toYaml .small }}'}
+  - {template: '{{ toYaml .s }}'}
+  - {template: '{{ toYaml .e }}'}
+  - {template: '{{ toYaml .yes }}'}
+  - {template: '{{ toYaml .on }}'}
+  - {template: '{{ toYaml .tilde }}'}
+  - {template: '{{ toYaml .hex }}'}
+  - {template: '{{ toYaml .num }}'}
+  - {template: '{{ toYaml .multi }}'}
+  - {template: '{{ toYaml .z }}'}
+  - {template: '{{ toYaml .missing }}'}
+  - {template: '{{ toYaml .el }}'}
+  - {template: '{{ toYaml .em }}'}
+  - {template: '{{ toYaml .t }}'}
+  - {template: '{{ toYaml .uni }}'}
+  - {template: '{{ toYaml .keyuni }}'}
+  - {template: '{{ toYaml . }}'}
+  - {template: '{{ toJson .m }}'}
+  - {template: '{{ toJson .nl }}'}
+  - {template: '{{ toJson .huge }}'}
+  - {template: '{{ toJson .big }}'}
+  - {template: '{{ toJson .e20 }}'}
+  - {template: '{{ toJson .frac }}'}
+  - {template: '{{ toJson .small }}'}
+  - {template: '{{ toJson .html }}'}
+  - {template: '{{ toJson .uni }}'}
+  - {template: '{{ toJson .keyuni }}'}
+  - {template: '{{ toJson .missing }}'}
+  - {template: '{{ toJson .z }}'}
+  - {template: '{{ toJson .el }}'}
+  - {template: '{{ mustToPrettyJson .m }}'}
+  - {template: '{{ mustToPrettyJson .em }}'}
+  - {template: '{{ toYaml .m | indent 2 }}'}
+  - {template: '{{ printf "%d" .n }}'}
+  - {template: '{{ printf "%v" .n }}'}
+  - {template: '{{ printf "%s" .n }}'}
+  - {template: '{{ printf "%s-%s" .s .missing }}'}
+  - {template: '{{ printf "%v" .missing }}'}
+  - {template: '{{ printf "%05.2f" .f }}'}
+  - {template: '{{ printf "%q" .s }}'}
+  - {template: '{{ cat .branch | slugify 50 false }}'}
+  - {template: '{{ slugify .branch }}'}
+  - {template: '{{ normalize .branch }}'}
+  - {template: '{{ base .path.path }}'}
+  - {template: '{{ dig "c" "d" "x" .m }}'}
+  - {template: '{{ dig "c" "zz" "x" .m }}'}
+  - {template: '{{ cat .s .n .missing .z }}'}
+  - {template: '{{ default "d" .missing }}'}
+  - {template: '{{ default "d" .e }}'}
+  - {template: '{{ default "d" .n }}'}
+  - {template: '{{ quote .s .n }}'}

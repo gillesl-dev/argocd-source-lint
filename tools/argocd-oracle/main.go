@@ -9,9 +9,16 @@
 // generators, wired as in generators.GetGenerators. The repo-server is replaced
 // by localRepos, which reads a local Git checkout.
 //
-// Input (stdin): a JSON array of {"appset": "<YAML>", "repo": "<checkout dir>",
-// "newGitFileGlobbing": bool}. Output (stdout): a JSON array of
-// {"applications": [...]} or {"error": "..."}, in the same order.
+// It also renders single Go templates with utils.Render.Replace, the function
+// the controller calls on every string of a goTemplate ApplicationSet, and
+// lists the template functions that Argo CD's Go templates accept.
+//
+// Input (stdin): {"appsets": [...], "renders": [...]}. Each appset is
+// {"appset": "<YAML>", "repo": "<checkout dir>", "newGitFileGlobbing": bool};
+// each render is {"template": "...", "params": {...}, "options": [...]}.
+// Output (stdout): {"appsets": [...], "renders": [...], "functions": [...]},
+// in the input order. An appset result is {"applications": [...]} or
+// {"error": "..."}; a render result is {"output": "..."} or {"error": "..."}.
 package main
 
 import (
@@ -21,8 +28,10 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 
+	"github.com/Masterminds/sprig/v3"
 	"github.com/argoproj/argo-cd/v3/applicationset/controllers/template"
 	"github.com/argoproj/argo-cd/v3/applicationset/generators"
 	"github.com/argoproj/argo-cd/v3/applicationset/utils"
@@ -176,22 +185,89 @@ func expand(in input) output {
 	return res
 }
 
+type renderInput struct {
+	Template string         `json:"template"`
+	Params   map[string]any `json:"params"`
+	Options  []string       `json:"options"`
+}
+
+type renderOutput struct {
+	Output *string `json:"output,omitempty"`
+	Error  string  `json:"error,omitempty"`
+}
+
+// render calls Replace as deeplyReplace does for each string of the template.
+// An invalid option makes text/template panic; the panic is reported as an error.
+func render(in renderInput) (res renderOutput) {
+	defer func() {
+		if r := recover(); r != nil {
+			res = renderOutput{Error: fmt.Sprintf("panic: %v", r)}
+		}
+	}()
+	out, err := (&utils.Render{}).Replace(in.Template, in.Params, true, in.Options)
+	if err != nil {
+		return renderOutput{Error: err.Error()}
+	}
+	return renderOutput{Output: &out}
+}
+
+// goBuiltins are text/template's predefined functions (builtins in
+// text/template/funcs.go), which sprig.GenericFuncMap does not list.
+var goBuiltins = []string{
+	"and", "call", "eq", "ge", "gt", "html", "index", "js", "le", "len", "lt", "ne",
+	"not", "or", "print", "printf", "println", "slice", "urlquery",
+}
+
+// functions lists the candidate names that parse in Argo CD's Go templates:
+// sprig's, text/template's builtins, and the ones Argo CD adds or removes.
+func functions() []string {
+	candidates := map[string]bool{
+		"env": true, "expandenv": true, "getHostByName": true,
+		"normalize": true, "slugify": true, "toYaml": true, "fromYaml": true, "fromYamlArray": true,
+	}
+	for name := range sprig.GenericFuncMap() {
+		candidates[name] = true
+	}
+	for _, name := range goBuiltins {
+		candidates[name] = true
+	}
+	names := []string{}
+	for name := range candidates {
+		probe := "{{ if false }}{{ " + name + " }}{{ end }}"
+		if _, err := (&utils.Render{}).Replace(probe, map[string]any{"x": ""}, true, nil); err == nil {
+			names = append(names, name)
+		}
+	}
+	sort.Strings(names)
+	return names
+}
+
 func main() {
 	log.SetOutput(os.Stderr)
 	log.SetLevel(log.PanicLevel)
-	var inputs []input
-	if err := json.NewDecoder(os.Stdin).Decode(&inputs); err != nil {
+	var in struct {
+		AppSets []input       `json:"appsets"`
+		Renders []renderInput `json:"renders"`
+	}
+	if err := json.NewDecoder(os.Stdin).Decode(&in); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(2)
 	}
-	outputs := make([]output, len(inputs))
-	for i, in := range inputs {
-		outputs[i] = expand(in)
+	out := struct {
+		AppSets   []output       `json:"appsets"`
+		Renders   []renderOutput `json:"renders"`
+		Functions []string       `json:"functions"`
+	}{AppSets: []output{}, Renders: []renderOutput{}, Functions: functions()}
+	for _, appset := range in.AppSets {
+		out.AppSets = append(out.AppSets, expand(appset))
+	}
+	for _, r := range in.Renders {
+		out.Renders = append(out.Renders, render(r))
 	}
 	enc := json.NewEncoder(os.Stdout)
 	enc.SetEscapeHTML(false)
 	enc.SetIndent("", "  ")
-	if err := enc.Encode(outputs); err != nil {
+	if err := enc.Encode(out); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(2)
 	}

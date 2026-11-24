@@ -137,8 +137,12 @@ new positive case for that variant.
 `tests/fixtures/appset_oracle_cases.yaml` with `tests/fixtures/appset_oracle_expected.json`.
 That file is computed by `tools/argocd-oracle/`, a Go program that imports Argo CD at the
 version pinned in its `go.mod` and calls the controller's own `template.GenerateApplications`.
-Never edit the expected file by hand. After adding or changing a case, or after moving the
-pinned Argo CD version, regenerate it with Docker:
+In the same way, `tests/test_gotemplate_oracle.py` compares the Go template renders of
+`tests/fixtures/gotemplate_render_cases.yaml` with
+`tests/fixtures/gotemplate_render_expected.json`, which the oracle computes with Argo CD's
+`Render.Replace`, along with the template functions Argo CD accepts. Never edit the
+expected files by hand. After adding or changing a case, or after moving the pinned Argo CD
+version, regenerate them with Docker:
 
 ```bash
 uv run python tools/argocd-oracle/regenerate.py

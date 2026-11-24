@@ -233,6 +233,34 @@ Generated Applications have `Finding.line = None`, and `Finding.file` points to 
 ApplicationSet. Their namespace is always the ApplicationSet's own, whatever the template
 says (`GenerateApplications` in `applicationset/controllers/template/template.go`).
 
+## Go templates
+
+`gotemplate.py` renders Go templates as ArgoCD's `Render.Replace` does
+(`applicationset/utils/utils.go`): Go's `text/template` with sprig's functions, minus
+`env`, `expandenv` and `getHostByName`, plus `normalize`, `slugify`, `toYaml`,
+`fromYaml` and `fromYamlArray`. Its lexer, parser and executor follow Go's
+`text/template` source, for the subset ApplicationSets use. It never guesses, and a
+template it can't render ends in one of two ways, kept apart in the code and in the
+messages:
+
+- `ArgoTemplateError`: ArgoCD's own rendering fails, so the controller creates or updates
+  none of the ApplicationSet's Applications. Examples are an undefined function, a field
+  of a string, `range` over a number, a comparison of a float64 with an int, or an unknown
+  `goTemplateOptions` entry, on which `text/template` panics.
+- `UnsupportedTemplateError`: this tool can't tell what ArgoCD produces. Examples are a
+  function it does not implement, `define`, `template` and `block`, or numbers that are not
+  decimal. `NoValueError` belongs here: ArgoCD renders a missing or null value as the text
+  `<no value>`, and the tool does not check an Application built from it.
+
+Both are `info` today. The first could later become a `warning`, since it predicts that
+ArgoCD will deploy nothing from the ApplicationSet. Only a reason this module is sure of
+may raise `ArgoTemplateError`; in doubt it raises `UnsupportedTemplateError`.
+
+The comparison tests take ArgoCD's outputs from `tools/argocd-oracle`, never from
+hand-written expectations. They also check that this module knows the same function names
+as ArgoCD (`ARGO_CD_FUNCTIONS`), so a function added by an ArgoCD upgrade fails the tests
+instead of becoming an undefined function here.
+
 ## `double-coverage`
 
 `double-coverage` reports a resource that more than one Application deploys to the same
