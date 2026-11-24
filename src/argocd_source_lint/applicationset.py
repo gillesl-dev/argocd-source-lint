@@ -3,14 +3,13 @@ from __future__ import annotations
 import posixpath
 import re
 from collections.abc import Iterator
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from ruamel.yaml import YAML
-from ruamel.yaml.error import YAMLError
-
-from argocd_source_lint.fsutil import discover_documents, is_within_budget, walk_tree
+from argocd_source_lint import appset_params
+from argocd_source_lint.appset_params import LimitError, ParamsError
+from argocd_source_lint.fsutil import discover_documents, walk_tree
 from argocd_source_lint.git_context import (
     is_local_repo_url,
     materialize_revision,
@@ -37,13 +36,25 @@ class GeneratorContext:
     source_file: Path
     severity: Severity
     new_git_file_globbing: bool
+    # Tree listings by (kind, root): a chained matrix resolves its second git
+    # generator once per entry of the first, which must not walk the tree each time.
+    listings: dict[tuple[str, Path], list[str]] = field(
+        default_factory=dict, compare=False, hash=False
+    )
+    revisions: set[str] = field(default_factory=set, compare=False, hash=False)
+
+
+# An ApplicationSet comes from the repository, which may not be trusted: every
+# expansion is bounded, and going over a bound is reported, not computed.
+_MAX_GENERATED_APPLICATIONS = 10_000
+_MAX_PARAMS_FILE_BYTES = 1024 * 1024
+_MAX_PARAMS_BYTES_PER_GENERATOR = 16 * 1024 * 1024
+_MAX_GIT_REVISIONS = 20
 
 
 # Classic ApplicationSet templating (`{{key}}`, valyala/fasttemplate).
 # `spec.goTemplate: true` uses a different engine and is not supported.
 _PLACEHOLDER_RE = re.compile(r"\{\{\s*([\w.\-\[\]]+)\s*\}\}")
-
-_yaml_safe = YAML(typ="safe")
 
 
 def discover(
@@ -139,6 +150,36 @@ def _expand_spec(
             )
         ]
 
+    try:
+        return _expand_generators(spec, ctx, manifest_path, repo_root, metadata)
+    except ParamsError as exc:
+        # GenerateApplications returns the first generator error, and the
+        # controller then stops before creating or updating any Application
+        # (applicationset_controller.go, Reconcile).
+        return [], [
+            _finding(
+                ctx,
+                f"Argo CD can't expand this ApplicationSet: {exc}. The controller stops "
+                "before creating or updating any of its Applications.",
+            )
+        ]
+    except LimitError as exc:
+        return [], [
+            _finding(
+                ctx,
+                f"ApplicationSet not expanded: {exc}, over this tool's limit. The "
+                "Applications it generates are not checked.",
+            )
+        ]
+
+
+def _expand_generators(
+    spec: dict[str, Any],
+    ctx: GeneratorContext,
+    manifest_path: Path,
+    repo_root: Path,
+    metadata: dict[str, Any],
+) -> tuple[list[Application], list[Finding]]:
     template = spec.get("template") or {}
     appset_namespace = metadata.get("namespace") or "argocd"
     applications: list[Application] = []
@@ -149,6 +190,10 @@ def _expand_spec(
             continue
         param_sets, generator_findings = _resolve_generator(generator, ctx)
         findings.extend(generator_findings)
+        if len(applications) + len(param_sets) > _MAX_GENERATED_APPLICATIONS:
+            raise LimitError(
+                f"it would generate more than {_MAX_GENERATED_APPLICATIONS} Applications"
+            )
         # A generator can carry its own `template`, merged over the spec's.
         effective_template = _merged(template, _generator_template(generator))
         for params in param_sets:
@@ -185,7 +230,7 @@ def _expand_spec(
 
 def _build_generated_application(
     template: dict[str, Any],
-    params: dict[str, str],
+    params: dict[str, Any],
     manifest_path: Path,
     repo_root: Path,
     appset_namespace: str,
@@ -206,7 +251,7 @@ def _build_generated_application(
 
 def _resolve_generator(
     generator: dict[str, Any], ctx: GeneratorContext
-) -> tuple[list[dict[str, str]], list[Finding]]:
+) -> tuple[list[dict[str, Any]], list[Finding]]:
     if generator.get("selector"):
         return [], [
             _finding(
@@ -238,23 +283,16 @@ def _resolve_generator(
 
 def _resolve_list(
     list_generator: dict[str, Any], ctx: GeneratorContext
-) -> tuple[list[dict[str, str]], list[Finding]]:
-    elements = list(list_generator.get("elements") or [])
-    elements_yaml = list_generator.get("elementsYaml")
-    if elements_yaml:
-        try:
-            parsed = _yaml_safe.load(str(elements_yaml))
-        except YAMLError:
-            parsed = None
-        if not isinstance(parsed, list) or not is_within_budget(parsed):
-            return [], [_finding(ctx, "list generator's `elementsYaml` is not a YAML list.")]
-        elements.extend(parsed)
-    return [_flatten_params(element) for element in elements if isinstance(element, dict)], []
+) -> tuple[list[dict[str, Any]], list[Finding]]:
+    elements = list_generator.get("elements") or []
+    if not isinstance(elements, list):
+        raise ParamsError("the list generator's `elements` is not a list")
+    return appset_params.list_param_sets(elements, list_generator.get("elementsYaml")), []
 
 
 def _resolve_git(
     git_generator: dict[str, Any], ctx: GeneratorContext
-) -> tuple[list[dict[str, str]], list[Finding]]:
+) -> tuple[list[dict[str, Any]], list[Finding]]:
     repo_url = git_generator.get("repoURL", "")
     if not is_local_repo_url(repo_url, ctx.local_origin):
         return [], [
@@ -269,7 +307,12 @@ def _resolve_git(
     # `targetRevision` (upstream Git generator docs), so a revision pinned away
     # from HEAD must enumerate that snapshot, not the working tree. Same
     # mechanism as `coverage._resolved_source_root` (DESIGN.md).
-    revision = git_generator.get("revision") or "HEAD"
+    revision = str(git_generator.get("revision") or "HEAD")
+    # Each new revision costs Git commands, and a chained matrix can set one
+    # per entry of its first child.
+    ctx.revisions.add(revision)
+    if len(ctx.revisions) > _MAX_GIT_REVISIONS:
+        raise LimitError(f"its git generators use more than {_MAX_GIT_REVISIONS} revisions")
     matches_checkout = revision_matches_checkout(ctx.repo_root, revision)
     if matches_checkout is None:
         # An unresolvable revision must never be treated as matching HEAD.
@@ -298,16 +341,34 @@ def _resolve_git(
             ]
         base_root = snapshot_root
 
+    prefix = str(git_generator.get("pathParamPrefix") or "")
+    values = git_generator.get("values")
+    if values is not None and not isinstance(values, dict):
+        raise ParamsError("the git generator's `values` is not a map")
+
     # With both set, Argo CD uses `directories` and ignores `files`.
     directories = git_generator.get("directories") or []
     if directories:
-        return _resolve_git_directories(base_root, directories), []
+        return [
+            appset_params.directory_params(directory, prefix, values)
+            for directory in _resolve_git_directories(ctx, base_root, directories)
+        ], []
     files = git_generator.get("files") or []
-    return _resolve_git_files(base_root, files, ctx.new_git_file_globbing), []
+    return _resolve_git_files(ctx, base_root, files, prefix, values), []
 
 
-def _resolve_git_directories(repo_root: Path, entries: list[Any]) -> list[dict[str, str]]:
-    all_dirs = _list_local_directories(repo_root)
+def _listing(ctx: GeneratorContext, kind: str, root: Path) -> list[str]:
+    key = (kind, root)
+    if key not in ctx.listings:
+        lister = _list_local_directories if kind == "directories" else _list_local_files
+        ctx.listings[key] = lister(root)
+    return ctx.listings[key]
+
+
+def _resolve_git_directories(
+    ctx: GeneratorContext, repo_root: Path, entries: list[Any]
+) -> list[str]:
+    all_dirs = _listing(ctx, "directories", repo_root)
     included: set[str] = set()
     excluded: set[str] = set()
     for entry in entries:
@@ -320,16 +381,20 @@ def _resolve_git_directories(repo_root: Path, entries: list[Any]) -> list[dict[s
         else:
             included |= matches
 
-    return [_directory_params(d) for d in sorted(included - excluded)]
+    return sorted(included - excluded)
 
 
 def _resolve_git_files(
-    repo_root: Path, entries: list[Any], new_git_file_globbing: bool
-) -> list[dict[str, str]]:
+    ctx: GeneratorContext,
+    repo_root: Path,
+    entries: list[Any],
+    prefix: str,
+    values: dict[str, Any] | None,
+) -> list[dict[str, Any]]:
     # Argo CD's `LsFiles` in util/git/client.go: `git ls-files` by default,
     # doublestar with the ApplicationSet controller's new globbing flag.
-    match = match_doublestar if new_git_file_globbing else match_git_pathspec
-    all_files = _list_local_files(repo_root)
+    match = match_doublestar if ctx.new_git_file_globbing else match_git_pathspec
+    all_files = _listing(ctx, "files", repo_root)
     matched: set[str] = set()
     excluded: set[str] = set()
     for entry in entries:
@@ -343,18 +408,26 @@ def _resolve_git_files(
             matched |= matches
     matched -= excluded
 
-    param_sets: list[dict[str, str]] = []
+    param_sets: list[dict[str, Any]] = []
+    bytes_read = 0
     for rel_path in sorted(matched):
-        content = _load_params_file(repo_root / rel_path)
-        if content is None:
+        path = repo_root / rel_path
+        if not path.is_file():
             continue
-        params = _flatten_params(content)
-        # As in Argo CD, `path` is the directory holding the file, not the file.
-        params.update(_directory_params(posixpath.dirname(rel_path)))
-        filename = posixpath.basename(rel_path)
-        params["path.filename"] = filename
-        params["path.filenameNormalized"] = _normalized(filename)
-        param_sets.append(params)
+        size = path.stat().st_size
+        if size > _MAX_PARAMS_FILE_BYTES:
+            raise LimitError(f"`{rel_path}` is over {_MAX_PARAMS_FILE_BYTES // 1024} KiB")
+        bytes_read += size
+        if bytes_read > _MAX_PARAMS_BYTES_PER_GENERATOR:
+            raise LimitError(
+                f"the git files generator matches over "
+                f"{_MAX_PARAMS_BYTES_PER_GENERATOR // (1024 * 1024)} MiB of files"
+            )
+        try:
+            text = path.read_text(encoding="utf-8")
+            param_sets.extend(appset_params.git_file_param_sets(rel_path, text, prefix, values))
+        except (OSError, UnicodeDecodeError, ParamsError) as exc:
+            raise ParamsError(f"`{rel_path}` of the git files generator: {exc}") from exc
     return param_sets
 
 
@@ -366,7 +439,7 @@ _MAX_MATRIX_COMBINATIONS = 10_000
 
 def _resolve_matrix(
     matrix_generator: dict[str, Any], ctx: GeneratorContext
-) -> tuple[list[dict[str, str]], list[Finding]]:
+) -> tuple[list[dict[str, Any]], list[Finding]]:
     children = matrix_generator.get("generators") or []
 
     if len(children) > 2:
@@ -382,7 +455,7 @@ def _resolve_matrix(
         ]
 
     findings: list[Finding] = []
-    param_lists: list[list[dict[str, str]]] = []
+    param_lists: list[list[dict[str, Any]]] = []
     children = [child for child in children if isinstance(child, dict)]
     if len(children) < 2:
         return [], [
@@ -397,11 +470,19 @@ def _resolve_matrix(
     if _unresolved_placeholders(second):
         # The second generator uses the first one's parameters (`{{path}}`), so it
         # is resolved once per entry of the first, as Argo CD does.
-        combined_chained: list[dict[str, str]] = []
+        if len(first_params) > _MAX_MATRIX_COMBINATIONS:
+            raise LimitError(
+                f"the matrix generator's first child has more than {_MAX_MATRIX_COMBINATIONS} "
+                "entries to resolve its second child with"
+            )
+        combined_chained: list[dict[str, Any]] = []
         for entry in first_params:
             params, child_findings = _resolve_generator(_substitute(second, entry), ctx)
-            findings.extend(child_findings)
-            combined_chained.extend({**entry, **other} for other in params)
+            # The same gap found for every entry is reported once.
+            findings.extend(f for f in child_findings if f not in findings)
+            combined_chained.extend(
+                appset_params.combine_string_maps(entry, other) for other in params
+            )
             if len(combined_chained) > _MAX_MATRIX_COMBINATIONS:
                 break
         else:
@@ -431,15 +512,18 @@ def _resolve_matrix(
             ),
         ]
 
-    combined: list[dict[str, str]] = [{}]
-    for params in param_lists:
-        combined = [{**base, **entry} for base in combined for entry in params]
+    first_list, second_list = param_lists
+    combined = [
+        appset_params.combine_string_maps(base, entry)
+        for base in first_list
+        for entry in second_list
+    ]
     return combined, findings
 
 
 def _resolve_merge(
     merge_generator: dict[str, Any], ctx: GeneratorContext
-) -> tuple[list[dict[str, str]], list[Finding]]:
+) -> tuple[list[dict[str, Any]], list[Finding]]:
     merge_keys = [str(key) for key in (merge_generator.get("mergeKeys") or [])]
     if not merge_keys:
         return [], [
@@ -451,20 +535,18 @@ def _resolve_merge(
         ]
 
     children = merge_generator.get("generators") or []
+    children = [child for child in children if isinstance(child, dict)]
+    if len(children) < 2:
+        raise ParamsError("the merge generator has fewer than 2 child generators")
     findings: list[Finding] = []
-    child_results: list[tuple[list[dict[str, str]], bool]] = []
+    child_results: list[tuple[dict[str, dict[str, Any]], bool]] = []
 
     for child in children:
-        if not isinstance(child, dict):
-            continue
         params, child_findings = _resolve_generator(child, ctx)
         findings.extend(child_findings)
-        child_results.append((params, bool(child_findings)))
+        child_results.append((_by_merge_key(params, merge_keys), bool(child_findings)))
 
-    if not child_results:
-        return [], findings
-
-    base_params, base_unresolvable = child_results[0]
+    base_by_key, base_unresolvable = child_results[0]
     if base_unresolvable:
         # Without base entries there is nothing for later generators to merge into.
         return [], findings
@@ -473,18 +555,29 @@ def _resolve_merge(
     # generator only overrides entries whose merge keys match, and its other
     # entries are discarded. An unresolvable later generator contributes no
     # override; its finding already reports the gap.
-    merged = [dict(entry) for entry in base_params]
-    by_key = {tuple(entry.get(key, "") for key in merge_keys): entry for entry in merged}
-
-    for params, was_unresolvable in child_results[1:]:
+    merged = {key: dict(entry) for key, entry in base_by_key.items()}
+    for by_key, was_unresolvable in child_results[1:]:
         if was_unresolvable:
             continue
-        for entry in params:
-            target = by_key.get(tuple(entry.get(key, "") for key in merge_keys))
-            if target is not None:
-                target.update(entry)
+        for key, entry in by_key.items():
+            if key in merged:
+                merged[key].update(entry)
 
-    return merged, findings
+    return list(merged.values()), findings
+
+
+def _by_merge_key(
+    param_sets: list[dict[str, Any]], merge_keys: list[str]
+) -> dict[str, dict[str, Any]]:
+    """Param sets by their merge key values, which must be unique within one
+    child generator (getParamSetsByMergeKey in generators/merge.go)."""
+    by_key: dict[str, dict[str, Any]] = {}
+    for params in param_sets:
+        key = appset_params.merge_key(params, merge_keys)
+        if key in by_key:
+            raise ParamsError(f"two entries of a merge generator child have the merge key {key}")
+        by_key[key] = params
+    return by_key
 
 
 def _list_local_directories(repo_root: Path) -> list[str]:
@@ -503,50 +596,6 @@ def _list_local_files(repo_root: Path) -> list[str]:
     return [
         path.relative_to(repo_root).as_posix() for path in walk_tree(repo_root) if path.is_file()
     ]
-
-
-def _directory_params(rel_path: str) -> dict[str, str]:
-    basename = rel_path.rsplit("/", 1)[-1]
-    params = {
-        "path": rel_path,
-        "path.basename": basename,
-        "path.basenameNormalized": _normalized(basename),
-    }
-    # `{{path[0]}}`, `{{path[1]}}`...: the path split into segments.
-    for index, segment in enumerate(rel_path.split("/")):
-        params[f"path[{index}]"] = segment
-    return params
-
-
-def _normalized(name: str) -> str:
-    return re.sub(r"[^A-Za-z0-9-]", "-", name).strip("-").lower() or "x"
-
-
-def _load_params_file(path: Path) -> Any:
-    if not path.is_file():
-        return None
-    try:
-        with path.open("r", encoding="utf-8") as f:
-            content = _yaml_safe.load(f)  # valid JSON is also valid YAML
-    except (YAMLError, UnicodeDecodeError, OSError):
-        return None
-    # Not loaded through fsutil.load_yaml_documents, so the alias-bomb budget
-    # is checked here before _flatten_params calls str() on the content.
-    return content if is_within_budget(content) else None
-
-
-def _flatten_params(obj: Any, prefix: str = "") -> dict[str, str]:
-    flat: dict[str, str] = {}
-    if isinstance(obj, dict):
-        for key, value in obj.items():
-            dotted = f"{prefix}.{key}" if prefix else str(key)
-            flat.update(_flatten_params(value, dotted))
-    elif isinstance(obj, list):
-        if prefix:
-            flat[prefix] = str(obj)
-    elif prefix:
-        flat[prefix] = "" if obj is None else str(obj)
-    return flat
 
 
 def _generator_template(generator: dict[str, Any]) -> dict[str, Any]:
@@ -650,14 +699,21 @@ def _unresolved_placeholders(value: Any) -> set[str]:
     return set()
 
 
-def _substitute(value: Any, params: dict[str, str]) -> Any:
+def _substitute(value: Any, params: dict[str, Any]) -> Any:
     if isinstance(value, str):
-        return _PLACEHOLDER_RE.sub(lambda m: params.get(m.group(1), m.group(0)), value)
+        # Only a string param fills a placeholder; Argo CD leaves the others
+        # (an `elementsYaml` number or map) as they are.
+        return _PLACEHOLDER_RE.sub(lambda m: _string_param(params, m), value)
     if isinstance(value, dict):
         return {key: _substitute(v, params) for key, v in value.items()}
     if isinstance(value, list):
         return [_substitute(v, params) for v in value]
     return value
+
+
+def _string_param(params: dict[str, Any], match: re.Match[str]) -> str:
+    value = params.get(match.group(1))
+    return value if isinstance(value, str) else match.group(0)
 
 
 def _finding(ctx: GeneratorContext, message: str, *, severity: Severity | None = None) -> Finding:

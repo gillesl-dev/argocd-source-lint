@@ -7,6 +7,7 @@ import pytest
 from ruamel.yaml import YAML
 
 from argocd_source_lint.fsutil import (
+    _flow_depth,
     clear_caches,
     discover_documents,
     is_within_budget,
@@ -137,3 +138,21 @@ def test_clear_caches_picks_up_a_new_file(tmp_path: Path):
     clear_caches()
 
     assert len(discover_documents(tmp_path)) == 1
+
+
+@pytest.mark.parametrize(
+    ("text", "depth"),
+    [
+        ("a: [[[x]]]\n", 3),
+        ('a: "' + "[" * 300 + '"\n', 0),
+        ("a: '" + "[" * 300 + "'\n", 0),
+        ("# " + "[" * 300 + "\n", 0),
+        ("a: |\n  " + "[" * 300 + "\nb: [c]\n", 1),
+        ("a: don't [x]\n", 1),
+        ('a: "x\\" ["\n', 0),
+        ('a: "one [\n  [[ two"\nb: [x]\n', 1),
+        ("['a]', [b]]\n", 2),
+    ],
+)
+def test_flow_depth_ignores_quotes_comments_and_block_scalars(text, depth):
+    assert _flow_depth(text) == depth

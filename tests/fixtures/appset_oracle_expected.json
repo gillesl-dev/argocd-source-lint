@@ -1,0 +1,502 @@
+{
+  "elements-yaml-top-level-strings": {
+    "applications": [
+      {
+        "destinationName": "",
+        "destinationNamespace": "dev",
+        "destinationServer": "https://kubernetes.default.svc",
+        "name": "app-dev",
+        "namespace": "argocd",
+        "project": "default",
+        "sources": [
+          {
+            "chart": "",
+            "path": "apps/dev",
+            "repoURL": "https://example.invalid/repo.git",
+            "targetRevision": "HEAD"
+          }
+        ]
+      },
+      {
+        "destinationName": "",
+        "destinationNamespace": "prod",
+        "destinationServer": "https://kubernetes.default.svc",
+        "name": "app-prod",
+        "namespace": "argocd",
+        "project": "default",
+        "sources": [
+          {
+            "chart": "",
+            "path": "apps/prod",
+            "repoURL": "https://example.invalid/repo.git",
+            "targetRevision": "HEAD"
+          }
+        ]
+      }
+    ]
+  },
+  "generator-level-template": {
+    "applications": [
+      {
+        "destinationName": "",
+        "destinationNamespace": "default",
+        "destinationServer": "https://kubernetes.default.svc",
+        "name": "app-dev",
+        "namespace": "argocd",
+        "project": "default",
+        "sources": [
+          {
+            "chart": "",
+            "path": "override/dev",
+            "repoURL": "https://example.invalid/repo.git",
+            "targetRevision": "HEAD"
+          }
+        ]
+      }
+    ]
+  },
+  "git-directories-exclude": {
+    "applications": [
+      {
+        "destinationName": "",
+        "destinationNamespace": "default",
+        "destinationServer": "https://kubernetes.default.svc",
+        "name": "app-a",
+        "namespace": "argocd",
+        "project": "default",
+        "sources": [
+          {
+            "chart": "",
+            "path": "apps/a",
+            "repoURL": "https://example.invalid/repo.git",
+            "targetRevision": "HEAD"
+          }
+        ]
+      },
+      {
+        "destinationName": "",
+        "destinationNamespace": "default",
+        "destinationServer": "https://kubernetes.default.svc",
+        "name": "app-c",
+        "namespace": "argocd",
+        "project": "default",
+        "sources": [
+          {
+            "chart": "",
+            "path": "apps/c",
+            "repoURL": "https://example.invalid/repo.git",
+            "targetRevision": "HEAD"
+          }
+        ]
+      }
+    ]
+  },
+  "git-directories-normalized-dots": {
+    "applications": [
+      {
+        "destinationName": "",
+        "destinationNamespace": "Other_App",
+        "destinationServer": "https://kubernetes.default.svc",
+        "name": "other-app",
+        "namespace": "argocd",
+        "project": "default",
+        "sources": [
+          {
+            "chart": "",
+            "path": "apps/Other_App",
+            "repoURL": "https://example.invalid/repo.git",
+            "targetRevision": "HEAD"
+          }
+        ]
+      },
+      {
+        "destinationName": "",
+        "destinationNamespace": "my.app",
+        "destinationServer": "https://kubernetes.default.svc",
+        "name": "my.app",
+        "namespace": "argocd",
+        "project": "default",
+        "sources": [
+          {
+            "chart": "",
+            "path": "apps/my.app",
+            "repoURL": "https://example.invalid/repo.git",
+            "targetRevision": "HEAD"
+          }
+        ]
+      }
+    ]
+  },
+  "git-files-at-the-root": {
+    "applications": [
+      {
+        "destinationName": "",
+        "destinationNamespace": ".x",
+        "destinationServer": "https://kubernetes.default.svc",
+        "name": "app-root",
+        "namespace": "argocd",
+        "project": "default",
+        "sources": [
+          {
+            "chart": "",
+            "path": ".",
+            "repoURL": "https://example.invalid/repo.git",
+            "targetRevision": "HEAD"
+          }
+        ]
+      }
+    ]
+  },
+  "git-files-list-of-objects-and-empty-file": {
+    "applications": [
+      {
+        "destinationName": "",
+        "destinationNamespace": "default",
+        "destinationServer": "https://kubernetes.default.svc",
+        "name": "app-envs-all.yaml",
+        "namespace": "argocd",
+        "project": "default",
+        "sources": [
+          {
+            "chart": "",
+            "path": "envs",
+            "repoURL": "https://example.invalid/repo.git",
+            "targetRevision": "HEAD"
+          }
+        ]
+      },
+      {
+        "destinationName": "",
+        "destinationNamespace": "default",
+        "destinationServer": "https://kubernetes.default.svc",
+        "name": "app-envs-all.yaml",
+        "namespace": "argocd",
+        "project": "default",
+        "sources": [
+          {
+            "chart": "",
+            "path": "envs",
+            "repoURL": "https://example.invalid/repo.git",
+            "targetRevision": "HEAD"
+          }
+        ]
+      },
+      {
+        "destinationName": "",
+        "destinationNamespace": "default",
+        "destinationServer": "https://kubernetes.default.svc",
+        "name": "app-none-config.yaml",
+        "namespace": "argocd",
+        "project": "default",
+        "sources": [
+          {
+            "chart": "",
+            "path": "envs/none",
+            "repoURL": "https://example.invalid/repo.git",
+            "targetRevision": "HEAD"
+          }
+        ]
+      }
+    ]
+  },
+  "git-files-nested-and-lists": {
+    "applications": [
+      {
+        "destinationName": "",
+        "destinationNamespace": "prod",
+        "destinationServer": "https://kubernetes.default.svc",
+        "name": "app-prod",
+        "namespace": "argocd",
+        "project": "default",
+        "sources": [
+          {
+            "chart": "",
+            "path": "m/eu/blue",
+            "repoURL": "https://example.invalid/repo.git",
+            "targetRevision": "HEAD"
+          }
+        ]
+      }
+    ]
+  },
+  "git-files-unparseable": {
+    "applications": null,
+    "error": "error generating params from git: unable to process file 'envs/broken.yaml': unable to parse file: error unmarshaling JSON: while decoding JSON: json: cannot unmarshal string into Go value of type []map[string]interface {}"
+  },
+  "git-files-value-formatting": {
+    "applications": [
+      {
+        "destinationName": "",
+        "destinationNamespace": "dev",
+        "destinationServer": "https://kubernetes.default.svc",
+        "name": "app-dev-config.yaml",
+        "namespace": "argocd",
+        "project": "default",
+        "sources": [
+          {
+            "chart": "",
+            "path": "m/true/1e+06/1/<nil>/493",
+            "repoURL": "https://example.invalid/repo.git",
+            "targetRevision": "HEAD"
+          }
+        ]
+      }
+    ]
+  },
+  "git-path-param-prefix-and-values": {
+    "applications": [
+      {
+        "destinationName": "",
+        "destinationNamespace": "team-web",
+        "destinationServer": "https://kubernetes.default.svc",
+        "name": "web",
+        "namespace": "argocd",
+        "project": "default",
+        "sources": [
+          {
+            "chart": "",
+            "path": "apps/web",
+            "repoURL": "https://example.invalid/repo.git",
+            "targetRevision": "HEAD"
+          }
+        ]
+      }
+    ]
+  },
+  "list-basic": {
+    "applications": [
+      {
+        "destinationName": "",
+        "destinationNamespace": "dev",
+        "destinationServer": "https://dev.invalid",
+        "name": "app-dev",
+        "namespace": "argocd",
+        "project": "default",
+        "sources": [
+          {
+            "chart": "",
+            "path": "apps/dev",
+            "repoURL": "https://example.invalid/repo.git",
+            "targetRevision": "HEAD"
+          }
+        ]
+      },
+      {
+        "destinationName": "",
+        "destinationNamespace": "prod",
+        "destinationServer": "https://prod.invalid",
+        "name": "app-prod",
+        "namespace": "argocd",
+        "project": "default",
+        "sources": [
+          {
+            "chart": "",
+            "path": "apps/prod",
+            "repoURL": "https://example.invalid/repo.git",
+            "targetRevision": "HEAD"
+          }
+        ]
+      }
+    ]
+  },
+  "list-non-string-value": {
+    "applications": null,
+    "error": "error parsing value as string %!w(<nil>)"
+  },
+  "list-values-map": {
+    "applications": [
+      {
+        "destinationName": "",
+        "destinationNamespace": "team-a",
+        "destinationServer": "https://kubernetes.default.svc",
+        "name": "app-dev",
+        "namespace": "argocd",
+        "project": "default",
+        "sources": [
+          {
+            "chart": "",
+            "path": "apps/d1",
+            "repoURL": "https://example.invalid/repo.git",
+            "targetRevision": "HEAD"
+          }
+        ]
+      }
+    ]
+  },
+  "matrix-list-by-list": {
+    "applications": [
+      {
+        "destinationName": "",
+        "destinationNamespace": "dev",
+        "destinationServer": "https://kubernetes.default.svc",
+        "name": "web-dev",
+        "namespace": "argocd",
+        "project": "default",
+        "sources": [
+          {
+            "chart": "",
+            "path": "apps/web/dev",
+            "repoURL": "https://example.invalid/repo.git",
+            "targetRevision": "HEAD"
+          }
+        ]
+      },
+      {
+        "destinationName": "",
+        "destinationNamespace": "dev",
+        "destinationServer": "https://kubernetes.default.svc",
+        "name": "api-dev",
+        "namespace": "argocd",
+        "project": "default",
+        "sources": [
+          {
+            "chart": "",
+            "path": "apps/api/dev",
+            "repoURL": "https://example.invalid/repo.git",
+            "targetRevision": "HEAD"
+          }
+        ]
+      },
+      {
+        "destinationName": "",
+        "destinationNamespace": "prod",
+        "destinationServer": "https://kubernetes.default.svc",
+        "name": "web-prod",
+        "namespace": "argocd",
+        "project": "default",
+        "sources": [
+          {
+            "chart": "",
+            "path": "apps/web/prod",
+            "repoURL": "https://example.invalid/repo.git",
+            "targetRevision": "HEAD"
+          }
+        ]
+      },
+      {
+        "destinationName": "",
+        "destinationNamespace": "prod",
+        "destinationServer": "https://kubernetes.default.svc",
+        "name": "api-prod",
+        "namespace": "argocd",
+        "project": "default",
+        "sources": [
+          {
+            "chart": "",
+            "path": "apps/api/prod",
+            "repoURL": "https://example.invalid/repo.git",
+            "targetRevision": "HEAD"
+          }
+        ]
+      }
+    ]
+  },
+  "matrix-same-key-two-values": {
+    "applications": null,
+    "error": "failed to combine string maps with merging params for the matrix generator: found duplicate key env with different value, a: dev ,b: prod"
+  },
+  "matrix-two-gits-with-prefix": {
+    "applications": [
+      {
+        "destinationName": "",
+        "destinationNamespace": "dev",
+        "destinationServer": "https://kubernetes.default.svc",
+        "name": "api-dev",
+        "namespace": "argocd",
+        "project": "default",
+        "sources": [
+          {
+            "chart": "",
+            "path": "envs/api",
+            "repoURL": "https://example.invalid/repo.git",
+            "targetRevision": "HEAD"
+          }
+        ]
+      },
+      {
+        "destinationName": "",
+        "destinationNamespace": "prod",
+        "destinationServer": "https://kubernetes.default.svc",
+        "name": "web-prod",
+        "namespace": "argocd",
+        "project": "default",
+        "sources": [
+          {
+            "chart": "",
+            "path": "envs/web",
+            "repoURL": "https://example.invalid/repo.git",
+            "targetRevision": "HEAD"
+          }
+        ]
+      }
+    ]
+  },
+  "matrix-two-gits-without-prefix": {
+    "applications": null,
+    "error": "failed to combine string maps with merging params for the matrix generator: found duplicate key path with different value, a: apps/web ,b: envs/web"
+  },
+  "merge-missing-versus-empty-key": {
+    "applications": [
+      {
+        "destinationName": "",
+        "destinationNamespace": "default",
+        "destinationServer": "https://kubernetes.default.svc",
+        "name": "app-base",
+        "namespace": "argocd",
+        "project": "default",
+        "sources": [
+          {
+            "chart": "",
+            "path": "apps/base",
+            "repoURL": "https://example.invalid/repo.git",
+            "targetRevision": "HEAD"
+          }
+        ]
+      }
+    ]
+  },
+  "merge-override": {
+    "applications": [
+      {
+        "destinationName": "",
+        "destinationNamespace": "dev",
+        "destinationServer": "https://kubernetes.default.svc",
+        "name": "app-dev",
+        "namespace": "argocd",
+        "project": "default",
+        "sources": [
+          {
+            "chart": "",
+            "path": "override-dev",
+            "repoURL": "https://example.invalid/repo.git",
+            "targetRevision": "HEAD"
+          }
+        ]
+      },
+      {
+        "destinationName": "",
+        "destinationNamespace": "prod",
+        "destinationServer": "https://kubernetes.default.svc",
+        "name": "app-prod",
+        "namespace": "argocd",
+        "project": "default",
+        "sources": [
+          {
+            "chart": "",
+            "path": "base-prod",
+            "repoURL": "https://example.invalid/repo.git",
+            "targetRevision": "HEAD"
+          }
+        ]
+      }
+    ]
+  },
+  "merge-repeated-key": {
+    "applications": null,
+    "error": "error getting param sets by merge key: the parameters from a generator were not unique by the given mergeKeys, Merge requires all param sets to be unique. Duplicate key was {\"env\":\"dev\"}"
+  },
+  "merge-single-child": {
+    "applications": null,
+    "error": "found less than two generators, Merge requires two or more"
+  }
+}

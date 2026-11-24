@@ -135,6 +135,31 @@ def soften_for_unexpanded_appsets(
     return softened
 
 
+def soften_for_skipped_files(findings: list[Finding], skipped: list[str]) -> list[Finding]:
+    """Report every orphan as `info` when a skipped file may hold an Application.
+
+    `skipped` lists files mentioning Argo CD resources that were too deeply
+    nested to read: an Application in one of them may deploy any orphan.
+    """
+    if not skipped:
+        return findings
+    files = ", ".join(f"`{path}`" for path in skipped)
+    return [
+        finding.model_copy(
+            update={
+                "severity": Severity.INFO,
+                "message": (
+                    f"{finding.message}. Skipped file {files} may hold the Application "
+                    "that deploys it."
+                ),
+            }
+        )
+        if finding.rule_id == RULE_ID and finding.severity != Severity.INFO
+        else finding
+        for finding in findings
+    ]
+
+
 def _referenced_value_file_paths(app: Application, local_origin: str | None) -> set[str]:
     ref_sources = ref_sources_by_name(app)
     paths: set[str] = set()

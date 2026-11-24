@@ -1,0 +1,7 @@
+argocd-oracle imports Argo CD (https://github.com/argoproj/argo-cd), at the
+version pinned in go.mod, under the Apache License 2.0 (LICENSE-argo-cd).
+
+localRepos in main.go follows the logic of Service.GetGitFiles and
+Service.GetGitDirectories in Argo CD's reposerver/repository/repository.go
+(Copyright The Argo Authors, Apache License 2.0), reduced to reading a local
+checkout.

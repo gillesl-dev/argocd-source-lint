@@ -190,6 +190,34 @@ same rules. Supported locally:
 - `merge`, using `mergeKeys` to overlay matching base entries;
 - a generator's own `template`, merged over the spec's.
 
+Parameters are computed as the controller does (`appset_params.py`): params files and
+`elementsYaml` are read like sigs.k8s.io/yaml (YAML 1.1 scalars such as `yes`, then JSON,
+so numbers are float64), values are printed like Go's `%v` (`true`, `<nil>`, `1e+06`), and
+`*Normalized` names keep dots. A `list` element only takes string values, while
+`elementsYaml` entries are kept as they are, so only their top-level strings fill a
+placeholder. When ArgoCD would fail the ApplicationSet (an unreadable params file, a
+non-string list value, conflicting `matrix` parameters, a `merge` with one child or a
+repeated merge key), the whole ApplicationSet is `unresolvable-generator` and generates
+nothing, as in ArgoCD: `GenerateApplications` returns the first generator error and the
+controller stops before creating or updating any Application. The git generator's
+`pathParamPrefix` and `values` are supported; `tests/test_applicationset_oracle.py` checks
+the expansion against ArgoCD's own code (`tools/argocd-oracle/`).
+
+An ApplicationSet comes from the repository, which may not be trusted, so its expansion is
+bounded: 10,000 Applications, 10,000 first-child entries for a `matrix` whose second child
+uses them, 20 git revisions, 1 MiB per params file and 16 MiB per git `files` generator.
+Reaching a bound is `unresolvable-generator`, never a partial expansion (values in
+docs/rules.md).
+
+Independently, a YAML file whose `[`/`{` nest more than 250 levels deep is skipped before
+parsing (`fsutil.check_flow_depth`). ruamel recurses once per level and fails past about
+247 under Python's default recursion limit, and its scanner spends seconds before failing,
+so such a file was never readable; skipping it only saves that time. Brackets in quotes,
+comments and block scalars are not counted. A second count that ignores quotes stops at
+1,000, so a stray quote can't hide the real depth. A skipped file gets a notice; if it
+mentions `argoproj.io/`, every `orphan-source` finding becomes `info`, since an Application
+in it may deploy any file.
+
 A `merge` without `mergeKeys` is `unresolvable-generator`. If the base generator is
 unresolvable, there are no known keys to merge on. If a later child is unresolvable, the
 base entries stay valid and only that child's overrides are missing.

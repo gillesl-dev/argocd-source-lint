@@ -149,9 +149,29 @@ revision missing from the clone, or a template placeholder no generator sets. Th
 Applications it would generate are not checked by the other rules, and `orphan-source`
 reports the files they may deploy as `info`.
 
+It also reports an ApplicationSet that ArgoCD itself can't expand, which then generates no
+Application at all: a git `files` params file that isn't an object or a list of objects, a
+`list` element value that isn't a string, two `matrix` children setting one parameter to
+different values, a `merge` with fewer than two children or with two entries of one child
+sharing a merge key.
+
+An ApplicationSet comes from the repository, which may not be trusted, so its expansion has
+bounds. When one is reached, the ApplicationSet gets this finding and none of its
+Applications is generated, never a partial set:
+
+| Bound | Value |
+| --- | --- |
+| Applications per ApplicationSet | 10,000 |
+| Combinations of a `matrix` | 10,000 |
+| Entries of a `matrix` first child whose parameters the second child uses | 10,000 |
+| Git revisions used by the git generators of one ApplicationSet | 20 |
+| Size of one git `files` params file | 1 MiB |
+| Size of all the files one git `files` generator matches | 16 MiB |
+| `[`/`{` nesting in a params file or `elementsYaml` | 250 levels |
+
 Fix: nothing to fix when the generator needs the cluster or an external service (`clusters`,
-`scmProvider`, `pullRequest`, `plugin`). For a placeholder without a value or a missing
-revision, the message says what is missing.
+`scmProvider`, `pullRequest`, `plugin`). For a placeholder without a value, a missing
+revision or a generator ArgoCD can't expand, the message says what is wrong.
 
 ## double-coverage
 

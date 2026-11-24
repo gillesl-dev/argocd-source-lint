@@ -131,6 +131,23 @@ injected per case. When you fix a false positive, add a negative case there, wit
 naming the fix, rather than widening an existing case. When you fix a missed detection, add a
 new positive case for that variant.
 
+### ApplicationSet expectations from Argo CD
+
+`tests/test_applicationset_oracle.py` compares the expansion of each ApplicationSet in
+`tests/fixtures/appset_oracle_cases.yaml` with `tests/fixtures/appset_oracle_expected.json`.
+That file is computed by `tools/argocd-oracle/`, a Go program that imports Argo CD at the
+version pinned in its `go.mod` and calls the controller's own `template.GenerateApplications`.
+Never edit the expected file by hand. After adding or changing a case, or after moving the
+pinned Argo CD version, regenerate it with Docker:
+
+```bash
+uv run python tools/argocd-oracle/regenerate.py
+```
+
+The first run downloads Argo CD's Go dependencies (about 1.5 GB) into the
+`argocd-oracle-gomod` Docker volume and takes several minutes. `tools/` is excluded from the
+sdist and the wheel.
+
 ## Releasing
 
 1. Bump `version` in `pyproject.toml`, run `uv lock`, and update the same version in

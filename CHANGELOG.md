@@ -5,6 +5,33 @@ All notable changes to this project are documented in this file, following
 
 ## [Unreleased]
 
+### Added
+
+- The git generator's `pathParamPrefix` and `values`. ArgoCD requires `pathParamPrefix` in a
+  `matrix` of two git generators, so these ApplicationSets are now expanded.
+- Bounds on ApplicationSet expansion; reaching one gives an `unresolvable-generator` `info`
+  finding. See [docs/rules.md](./docs/rules.md#unresolvable-generator).
+
+### Changed
+
+- Some ApplicationSets that generated Applications are now an `unresolvable-generator`
+  `info` finding with none, because ArgoCD rejects them and creates nothing: a git `files`
+  params file that isn't an object or a list of objects, a `list` element value that isn't
+  a string, two `matrix` children setting one parameter to different values (two git
+  generators without `pathParamPrefix`), a `merge` with one child or a merge key repeated
+  within one child. Their files are `orphan-source` `info`, not `error`.
+
+### Fixed
+
+- A YAML file nested hundreds of levels deep (`[[[[...`) crashed the tool with exit code 1,
+  the code for lint errors. It is now skipped with a notice; when it mentions Argo CD
+  resources, `orphan-source` findings become `info`, since it may hold their Application.
+- ApplicationSet parameters match ArgoCD v3.3.3, checked against its own code:
+  `*Normalized` names keep dots (`config.json`, not `config-json`); params file values are
+  read as YAML 1.1 and printed as Go does (`yes` is `true`, `1000000` is `1e+06`); a file
+  holding a list of objects gives one Application per object; `elementsYaml` entries are not
+  flattened; a `merge` no longer matches a missing merge key with an empty one.
+
 ## [1.4.1] - 2026-11-04
 
 ### Fixed

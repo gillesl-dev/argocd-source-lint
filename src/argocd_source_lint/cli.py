@@ -21,8 +21,8 @@ from argocd_source_lint.baseline import (
     write_baseline,
 )
 from argocd_source_lint.coverage import clear_caches as clear_coverage_cache
+from argocd_source_lint.fsutil import SKIPPED_REASON, skipped_files, unreadable_argocd_files
 from argocd_source_lint.fsutil import clear_caches as clear_discovery_cache
-from argocd_source_lint.fsutil import unreadable_argocd_files
 from argocd_source_lint.git_context import clear_caches as clear_git_caches
 from argocd_source_lint.git_context import (
     get_origin_url,
@@ -58,7 +58,11 @@ from argocd_source_lint.rules.malformed_ignore_diff_pointer import (
 )
 from argocd_source_lint.rules.malformed_sync_wave import MalformedSyncWaveRule
 from argocd_source_lint.rules.missing_ignore_diff import MissingIgnoreDiffRule
-from argocd_source_lint.rules.orphan_source import OrphanSourceRule, soften_for_unexpanded_appsets
+from argocd_source_lint.rules.orphan_source import (
+    OrphanSourceRule,
+    soften_for_skipped_files,
+    soften_for_unexpanded_appsets,
+)
 from argocd_source_lint.rules.phantom_target import PhantomTargetRule
 from argocd_source_lint.rules.project_scope import ProjectScopeViolationRule
 from argocd_source_lint.rules.revision_mismatch import RevisionMismatchRule
@@ -247,6 +251,14 @@ def lint(
         if rule.rule_id in selected_rules:
             findings.extend(rule.check(applications, repo_root, policy, local_origin))
     findings = soften_for_unexpanded_appsets(findings, unexpanded)
+    findings = soften_for_skipped_files(
+        findings,
+        [
+            _shown_path(path, repo_root)
+            for path, may_hold_application in sorted(skipped_files().items())
+            if may_hold_application
+        ],
+    )
 
     findings, annotated = split_by_annotations(findings, applications)
     if annotated:
@@ -312,6 +324,10 @@ def _selected_rules(only: list[str], skip: list[str]) -> set[str]:
     return (set(only) if only else known) - set(skip)
 
 
+def _shown_path(path: Path, repo_root: Path) -> str:
+    return (path.relative_to(repo_root) if path.is_relative_to(repo_root) else path).as_posix()
+
+
 def _skipped_check_notices(
     applications: list[Application],
     repo_root: Path,
@@ -325,6 +341,9 @@ def _skipped_check_notices(
     The returned strings are already markup-escaped.
     """
     notices = annotation_problems(applications, set(DEFAULT_RULE_SEVERITIES))
+    for skipped in sorted(skipped_files()):
+        skipped_path = escape(visible_controls(_shown_path(skipped, repo_root)))
+        notices.append(f"`{skipped_path}`: {SKIPPED_REASON}.")
     for path, reason in sorted(unreadable_argocd_files().items()):
         shown = path.relative_to(repo_root) if path.is_relative_to(repo_root) else path
         notices.append(
