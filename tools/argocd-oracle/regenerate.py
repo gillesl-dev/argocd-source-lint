@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import subprocess
 import sys
 import tempfile
@@ -38,6 +39,7 @@ RENDER_CASES = ROOT / "tests" / "fixtures" / "gotemplate_render_cases.yaml"
 RENDER_EXPECTED = ROOT / "tests" / "fixtures" / "gotemplate_render_expected.json"
 IMAGE = "golang:1.25.5-alpine"
 APPSET_PATH = "bootstrap/appset.yaml"
+RUNS = 3
 
 
 def _git(cwd: Path, *args: str) -> None:
@@ -63,6 +65,51 @@ def _make_repo(root: Path, case: dict) -> None:
 
 def _write_json(path: Path, data: object) -> None:
     path.write_bytes((json.dumps(data, indent=2, sort_keys=True) + "\n").encode("utf-8"))
+
+
+# Argo CD builds some results by iterating over Go maps, whose order changes
+# from run to run. Each pattern replaces the part of an error message that
+# depends on that order.
+_UNSTABLE_ERRORS = [
+    # CombineStringMaps (applicationset/utils/utils.go) names the first
+    # conflicting key it meets.
+    (
+        re.compile(r"found duplicate key \S+ with different value, a: .* ,b: .*$", re.DOTALL),
+        "found duplicate key <key> with different value",
+    ),
+]
+
+
+def _stable(outputs: dict) -> dict:
+    """The oracle's outputs without what depends on Go's map order."""
+    appsets = []
+    for appset in outputs["appsets"]:
+        appset = dict(appset)
+        if appset.get("error"):
+            for pattern, replacement in _UNSTABLE_ERRORS:
+                appset["error"] = pattern.sub(replacement, appset["error"])
+        if appset.get("applications"):
+            # The merge generator emits its entries in map order; the tests
+            # compare Applications as an unordered set.
+            appset["applications"] = sorted(
+                appset["applications"], key=lambda app: json.dumps(app, sort_keys=True)
+            )
+        appsets.append(appset)
+    return {**outputs, "appsets": appsets}
+
+
+def _decode_all(stdout: bytes) -> list[dict]:
+    """The JSON documents the oracle runs printed one after the other."""
+    text = stdout.decode("utf-8")
+    decoder = json.JSONDecoder()
+    documents, index = [], 0
+    while index < len(text):
+        if text[index].isspace():
+            index += 1
+            continue
+        document, index = decoder.raw_decode(text, index)
+        documents.append(document)
+    return documents
 
 
 def render_inputs() -> list[dict]:
@@ -101,11 +148,15 @@ def main() -> int:
 
         gomod = os.environ.get("ORACLE_GOMODCACHE", "argocd-oracle-gomod")
         gocache = os.environ.get("ORACLE_GOCACHE", "argocd-oracle-gocache")
+        # The oracle runs several times on the same input, so that an output
+        # depending on Go's map order shows up here rather than as churn in
+        # the expected files.
         script = (
             "apk add --no-cache git >/dev/null "
             "&& git config --global --add safe.directory '*' "
             "&& CGO_ENABLED=0 go build -o /tmp/oracle . "
-            "&& /tmp/oracle"
+            "&& cat > /tmp/input.json "
+            f"&& for run in $(seq {RUNS}); do /tmp/oracle < /tmp/input.json || exit 1; done"
         )
         result = subprocess.run(
             [
@@ -121,7 +172,26 @@ def main() -> int:
         if result.returncode != 0:
             sys.stderr.write(result.stderr.decode(errors="replace"))
             return result.returncode
-        outputs = json.loads(result.stdout)
+        runs = [_stable(outputs) for outputs in _decode_all(result.stdout)]
+
+    if len(runs) != RUNS:
+        sys.exit(f"expected {RUNS} oracle runs, got {len(runs)}")
+    outputs = runs[0]
+    unstable = [
+        name
+        for index, name in enumerate(names)
+        if any(run["appsets"][index] != outputs["appsets"][index] for run in runs[1:])
+    ]
+    unstable += [
+        f"render {index}: {render['template']!r}"
+        for index, render in enumerate(renders)
+        if any(run["renders"][index] != outputs["renders"][index] for run in runs[1:])
+    ]
+    if unstable or any(run["functions"] != outputs["functions"] for run in runs[1:]):
+        sys.exit(
+            "the oracle's results change from run to run; add a pattern to _UNSTABLE_ERRORS: "
+            + ", ".join(unstable or ["functions"])
+        )
 
     expected = dict(zip(names, outputs["appsets"], strict=True))
     _write_json(EXPECTED, expected)

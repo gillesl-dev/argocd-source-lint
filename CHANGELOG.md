@@ -5,6 +5,11 @@ All notable changes to this project are documented in this file, following
 
 ## [Unreleased]
 
+### Fixed
+
+- The `*Normalized` parameters of the git generator now lowercase `İ` (U+0130) to `i`, as
+  ArgoCD does, instead of `i-`.
+
 ## [1.5.0] - 2026-11-24
 
 ### Added

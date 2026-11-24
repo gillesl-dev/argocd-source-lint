@@ -246,7 +246,8 @@ _INVALID_DNS_CHARS = re.compile(r"[^-a-z0-9.]")
 def sanitize_name(name: str) -> str:
     """`normalize` and the `*Normalized` params (SanitizeName in
     applicationset/utils/template_functions.go)."""
-    name = _INVALID_DNS_CHARS.sub("-", name.lower())[:253]
+    # Go's ToLower maps U+0130 to "i"; Python's lower() gives "i" + U+0307.
+    name = _INVALID_DNS_CHARS.sub("-", name.replace("İ", "i").lower())[:253]
     return name.strip("-.")
 
 

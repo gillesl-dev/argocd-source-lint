@@ -5,8 +5,8 @@ fixtures/gotemplate_render_expected.json come from tools/argocd-oracle, which
 calls Argo CD's applicationset/utils Render.Replace (see CONTRIBUTING.md).
 
 Rendering must give Argo CD's output, fail where Argo CD fails, or refuse:
-`<no value>` in Argo CD's output, a case marked `unsupported`, or a function
-this tool does not implement yet.
+`<no value>` or a printf error such as `%!d(float64=1)` in Argo CD's output,
+a case marked `unsupported`, or a function this tool does not implement.
 """
 
 from __future__ import annotations
@@ -77,6 +77,16 @@ def test_known_functions_are_argo_cds():
     assert sorted(gotemplate.ARGO_CD_FUNCTIONS) == EXPECTED["functions"]
 
 
+def test_supported_functions_are_the_planned_ones():
+    planned = {
+        "index", "cat", "slugify", "normalize", "base", "toJson", "mustToPrettyJson", "dig",
+        "toYaml", "indent", "quote", "printf", "default", "lower", "upper", "replace",
+        "trimPrefix", "trimSuffix", "eq", "ne", "and", "or", "not",
+    }  # fmt: skip
+    assert gotemplate.SUPPORTED_FUNCTIONS == planned
+    assert planned <= gotemplate.ARGO_CD_FUNCTIONS
+
+
 @pytest.mark.parametrize(
     "index", range(len(CASES)), ids=[f"{i}:{case['template']!r}" for i, case in enumerate(CASES)]
 )
@@ -87,7 +97,7 @@ def test_render_matches_argo_cd(index):
 
     if kind == "unsupported function":
         # Allowed until the function is implemented; then the case must match.
-        assert detail not in gotemplate._FUNCTIONS
+        assert detail not in gotemplate.SUPPORTED_FUNCTIONS
         assert "unsupported" not in case
         return
     if "unsupported" in case:
@@ -96,5 +106,8 @@ def test_render_matches_argo_cd(index):
         assert kind == "error", (detail, expected["error"])
     elif "<no value>" in expected["output"]:
         assert kind == "no value", detail
+    elif "%!" in expected["output"]:
+        # fmt's text for a bad verb or argument: rendered, but not a value.
+        assert kind == "unsupported", detail
     else:
         assert (kind, detail) == ("output", expected["output"])

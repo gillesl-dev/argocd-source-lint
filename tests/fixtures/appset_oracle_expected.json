@@ -329,22 +329,6 @@
         "destinationName": "",
         "destinationNamespace": "dev",
         "destinationServer": "https://kubernetes.default.svc",
-        "name": "web-dev",
-        "namespace": "argocd",
-        "project": "default",
-        "sources": [
-          {
-            "chart": "",
-            "path": "apps/web/dev",
-            "repoURL": "https://example.invalid/repo.git",
-            "targetRevision": "HEAD"
-          }
-        ]
-      },
-      {
-        "destinationName": "",
-        "destinationNamespace": "dev",
-        "destinationServer": "https://kubernetes.default.svc",
         "name": "api-dev",
         "namespace": "argocd",
         "project": "default",
@@ -359,15 +343,15 @@
       },
       {
         "destinationName": "",
-        "destinationNamespace": "prod",
+        "destinationNamespace": "dev",
         "destinationServer": "https://kubernetes.default.svc",
-        "name": "web-prod",
+        "name": "web-dev",
         "namespace": "argocd",
         "project": "default",
         "sources": [
           {
             "chart": "",
-            "path": "apps/web/prod",
+            "path": "apps/web/dev",
             "repoURL": "https://example.invalid/repo.git",
             "targetRevision": "HEAD"
           }
@@ -388,12 +372,28 @@
             "targetRevision": "HEAD"
           }
         ]
+      },
+      {
+        "destinationName": "",
+        "destinationNamespace": "prod",
+        "destinationServer": "https://kubernetes.default.svc",
+        "name": "web-prod",
+        "namespace": "argocd",
+        "project": "default",
+        "sources": [
+          {
+            "chart": "",
+            "path": "apps/web/prod",
+            "repoURL": "https://example.invalid/repo.git",
+            "targetRevision": "HEAD"
+          }
+        ]
       }
     ]
   },
   "matrix-same-key-two-values": {
     "applications": null,
-    "error": "failed to combine string maps with merging params for the matrix generator: found duplicate key env with different value, a: dev ,b: prod"
+    "error": "failed to combine string maps with merging params for the matrix generator: found duplicate key <key> with different value"
   },
   "matrix-two-gits-with-prefix": {
     "applications": [
@@ -433,7 +433,7 @@
   },
   "matrix-two-gits-without-prefix": {
     "applications": null,
-    "error": "failed to combine string maps with merging params for the matrix generator: found duplicate key path with different value, a: apps/web ,b: envs/web"
+    "error": "failed to combine string maps with merging params for the matrix generator: found duplicate key <key> with different value"
   },
   "merge-missing-versus-empty-key": {
     "applications": [

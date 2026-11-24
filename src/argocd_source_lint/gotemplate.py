@@ -20,12 +20,13 @@ from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from typing import Any
 
-from argocd_source_lint.appset_params import go_format
+from argocd_source_lint import gotemplate_functions as functions
 
 __all__ = [
     "ARGO_CD_FUNCTIONS",
     "ArgoTemplateError",
     "NoValueError",
+    "SUPPORTED_FUNCTIONS",
     "TemplateError",
     "UnsupportedFunctionError",
     "UnsupportedTemplateError",
@@ -111,11 +112,8 @@ MISSING: Any = _Missing()
 _NOT_GIVEN: Any = object()
 
 
-def _go_print(value: Any) -> str:
-    """fmt.Fprint of a value, as printValue writes an action's result."""
-    if type(value) is int:
-        return str(value)
-    return go_format(value)
+# fmt.Fprint of a value, as printValue writes an action's result.
+_go_print = functions.go_print
 
 
 def _is_true(value: Any) -> bool:
@@ -1003,10 +1001,95 @@ class _State:
         raise self._error(f"can't evaluate field {name} of {_go_print(receiver)}")
 
     def eval_function(self, dot: Any, name: str, args: tuple[Any, ...], final: Any) -> Any:
-        function = _FUNCTIONS.get(name)
-        if function is None:
+        """evalCall in exec.go: check the argument count, convert each
+        argument to its parameter's type, then call."""
+        signature = _FUNCTIONS.get(name)
+        if signature is None:
             raise UnsupportedFunctionError(name)
-        return function(self, dot, args[1:], final)
+        nodes = args[1:]
+        count = len(nodes) + (final is not _NOT_GIVEN)
+        fixed = len(signature.params)
+        if count < fixed or (signature.variadic is None and count != fixed):
+            raise self._error(f"wrong number of args for {name}: want {fixed} got {count}")
+        if name in ("and", "or"):
+            return self.eval_and_or(name, dot, nodes, final)
+
+        def kind(index: int) -> str:
+            return signature.params[index] if index < fixed else str(signature.variadic)
+
+        values = [self.eval_arg(dot, kind(index), node) for index, node in enumerate(nodes)]
+        if final is not _NOT_GIVEN:
+            values.append(self.validate(final, kind(len(nodes))))
+        try:
+            return signature.function(*values)
+        except functions.GoCallError as exc:
+            raise self._error(f"error calling {name}: {exc}") from None
+        except functions.NotSupported as exc:
+            raise UnsupportedTemplateError(str(exc)) from None
+
+    def eval_and_or(self, name: str, dot: Any, nodes: tuple[Any, ...], final: Any) -> Any:
+        """The special case of evalCall: `and` and `or` stop at the first
+        argument that decides, and return it."""
+        value: Any = MISSING
+        for node in nodes:
+            value = self.eval_arg(dot, "value", node)
+            if _is_true(value) == (name == "or"):
+                return value
+        if final is not _NOT_GIVEN:
+            value = self.validate(final, "value")
+        return value
+
+    def eval_arg(self, dot: Any, kind: str, node: Any) -> Any:
+        """evalArg in exec.go."""
+        if isinstance(node, _Dot):
+            return self.validate(dot, kind)
+        if isinstance(node, _Nil):
+            if kind in ("any", "value"):
+                return None if kind == "any" else MISSING
+            raise self._error(f"cannot assign nil to {_GO_TYPES[kind]}")
+        if isinstance(node, _Field):
+            value = self.eval_field_chain(dot, node.idents, (node,), _NOT_GIVEN)
+            return self.validate(value, kind)
+        if isinstance(node, _Variable):
+            value = self.var_value(node.idents[0])
+            if len(node.idents) > 1:
+                value = self.eval_field_chain(value, node.idents[1:], (), _NOT_GIVEN)
+            return self.validate(value, kind)
+        if isinstance(node, _Pipe):
+            return self.validate(self.eval_pipeline(dot, node), kind)
+        if isinstance(node, _Identifier):
+            return self.validate(self.eval_function(dot, node.name, (node,), _NOT_GIVEN), kind)
+        # A literal: evalEmptyInterface for interface{} parameters, else
+        # evalString, evalInteger or evalBool.
+        if kind in ("any", "value"):
+            if isinstance(node, _Number):
+                return _ideal_constant(node)
+            return node.value
+        if kind == "string" and isinstance(node, _String):
+            return node.value
+        if kind == "int" and isinstance(node, _Number) and node.is_int:
+            return node.int_value
+        if kind == "bool" and isinstance(node, _Bool):
+            return node.value
+        expected = {"string": "string", "int": "integer", "bool": "bool"}[kind]
+        raise self._error(f"expected {expected}")
+
+    def validate(self, value: Any, kind: str) -> Any:
+        """validateType in exec.go: a value converted to a parameter type."""
+        if kind == "value":
+            return value
+        if kind == "any":
+            return None if value is MISSING else value
+        if value is MISSING:
+            raise self._error(f"invalid value; expected {_GO_TYPES[kind]}")
+        matches = {
+            "string": isinstance(value, str),
+            "int": type(value) is int,
+            "bool": isinstance(value, bool),
+        }[kind]
+        if not matches:
+            raise self._error(f"wrong type for value; expected {_GO_TYPES[kind]}")
+        return value
 
     def var_value(self, name: str) -> Any:
         for entry in reversed(self.vars):
@@ -1029,8 +1112,135 @@ def _ideal_constant(number: _Number) -> Any:
     return number.int_value
 
 
-# Implemented functions: name -> (state, dot, argument nodes, final value).
-_FUNCTIONS: dict[str, Callable[[_State, Any, tuple[Any, ...], Any], Any]] = {}
+# ---- Functions ----
+#
+# Parameter kinds: "any" is interface{} (a missing value becomes nil),
+# "value" is reflect.Value (text/template's builtins, which see a missing
+# value as such), "string", "int" and "bool" are checked Go types.
+
+_GO_TYPES = {"string": "string", "int": "int", "bool": "bool"}
+
+
+@dataclass(frozen=True, slots=True)
+class _Signature:
+    function: Callable[..., Any]
+    params: tuple[str, ...]
+    variadic: str | None = None
+
+
+def _indirect_interface(value: Any) -> Any:
+    """indirectInterface in exec.go: a nil interface{} is a missing value."""
+    return MISSING if value is None else value
+
+
+def _basic_kind(value: Any) -> str:
+    """basicKind in funcs.go: lists and maps have no basic kind, like a
+    missing value."""
+    if isinstance(value, bool):
+        return "bool"
+    if type(value) is int:
+        return "int"
+    if isinstance(value, float):
+        return "float64"
+    if isinstance(value, str):
+        return "string"
+    return "invalid"
+
+
+def _eq(arg1: Any, *others: Any) -> bool:
+    """eq in funcs.go."""
+    arg1 = _indirect_interface(arg1)
+    if not others:
+        raise functions.GoCallError("missing argument for comparison")
+    kind1 = _basic_kind(arg1)
+    for other in others:
+        other = _indirect_interface(other)
+        kind2 = _basic_kind(other)
+        if kind1 != kind2:
+            if arg1 is not MISSING and other is not MISSING:
+                raise functions.GoCallError(
+                    f"incompatible types for comparison: {kind1} and {kind2}"
+                )
+            continue
+        if kind1 == "invalid":
+            # A missing value equals only another; lists and maps are not
+            # comparable (canCompare, then Type().Comparable()).
+            if arg1 is MISSING and other is MISSING:
+                return True
+            if arg1 is MISSING or other is MISSING:
+                continue
+            raise functions.GoCallError("non-comparable type")
+        if arg1 == other:
+            return True
+    return False
+
+
+def _ne(arg1: Any, arg2: Any) -> bool:
+    return not _eq(arg1, arg2)
+
+
+def _not(value: Any) -> bool:
+    return not _is_true(value)
+
+
+def _index(item: Any, *indexes: Any) -> Any:
+    """index in funcs.go."""
+    item = _indirect_interface(item)
+    if item is MISSING:
+        raise functions.GoCallError("index of untyped nil")
+    for index in indexes:
+        index = _indirect_interface(index)
+        if item is None:
+            raise functions.GoCallError("index of nil pointer")
+        if isinstance(item, (list, str)):
+            if index is MISSING:
+                raise functions.GoCallError("cannot index slice/array with nil")
+            if type(index) is not int:
+                raise functions.GoCallError("cannot index slice/array with this type")
+            if not 0 <= index < len(item):
+                raise functions.GoCallError(f"index out of range: {index}")
+            if isinstance(item, str):
+                raise functions.NotSupported("indexing a string (a byte) is not supported")
+            item = item[index]
+        elif isinstance(item, dict):
+            if not isinstance(index, str):
+                raise functions.GoCallError("a map index must be a string")
+            # A missing key gives the zero value: nil.
+            item = item.get(index)
+        else:
+            raise functions.GoCallError("can't index this item")
+    return item
+
+
+_FUNCTIONS: dict[str, _Signature] = {
+    # text/template builtins (funcs.go)
+    "and": _Signature(_not, ("value",), "value"),  # evaluated by eval_and_or
+    "or": _Signature(_not, ("value",), "value"),  # evaluated by eval_and_or
+    "not": _Signature(_not, ("value",)),
+    "eq": _Signature(_eq, ("value",), "value"),
+    "ne": _Signature(_ne, ("value", "value")),
+    "index": _Signature(_index, ("value",), "value"),
+    "printf": _Signature(functions.sprintf, ("string",), "any"),
+    # sprig
+    "default": _Signature(functions.default, ("any",), "any"),
+    "lower": _Signature(functions.lower, ("string",)),
+    "upper": _Signature(functions.upper, ("string",)),
+    "replace": _Signature(functions.replace, ("string", "string", "string")),
+    "trimPrefix": _Signature(functions.trim_prefix, ("string", "string")),
+    "trimSuffix": _Signature(functions.trim_suffix, ("string", "string")),
+    "quote": _Signature(functions.quote, (), "any"),
+    "cat": _Signature(functions.cat, (), "any"),
+    "indent": _Signature(functions.indent, ("int", "string")),
+    "base": _Signature(functions.base, ("string",)),
+    "dig": _Signature(functions.dig, (), "any"),
+    "toJson": _Signature(functions.to_json, ("any",)),
+    "mustToPrettyJson": _Signature(functions.to_pretty_json, ("any",)),
+    # Argo CD
+    "toYaml": _Signature(functions.to_yaml, ("any",)),
+    "normalize": _Signature(functions.normalize, ("string",)),
+    "slugify": _Signature(functions.slugify, (), "any"),
+}
+SUPPORTED_FUNCTIONS = frozenset(_FUNCTIONS)
 
 
 # ---- Entry point ----

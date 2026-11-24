@@ -64,6 +64,8 @@ _GIT_FILES = """\
         ("-a-", "a"),
         ("Éte", "te"),
         ("a" * 300, "a" * 253),
+        # Go's ToLower maps U+0130 to a plain "i" (oracle case `normalize "İSTANBUL"`).
+        ("İSTANBUL", "istanbul"),
     ],
 )
 def test_sanitize_name_matches_argo_cd(name, expected):

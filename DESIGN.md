@@ -252,6 +252,17 @@ messages:
   decimal. `NoValueError` belongs here: ArgoCD renders a missing or null value as the text
   `<no value>`, and the tool does not check an Application built from it.
 
+The functions are those found in ArgoCD's ApplicationSet examples and documentation:
+`and`, `or`, `not`, `eq`, `ne`, `index`, `printf` (Go builtins); `default`, `lower`,
+`upper`, `replace`, `trimPrefix`, `trimSuffix`, `quote`, `cat`, `indent`, `base`, `dig`,
+`toJson`, `mustToPrettyJson` (sprig); `toYaml`, `normalize`, `slugify` (ArgoCD).
+`gotemplate_functions.py` follows their Go source and refuses what it does not reproduce
+exactly: `printf` output that Go prints as an error (`%!d(float64=1)`), `printf` of nil,
+flags other than `-` and `0`, verbs other than `s d v q t f`; `lower` and `upper` of
+non-ASCII text (Go maps rune by rune, Python applies full case mappings); `index` of a
+string (a byte); and `toYaml` output it can't predict: timestamps with a time part,
+multiline strings in lists, long strings folded outside a map, or strings needing escapes.
+
 Both are `info` today. The first could later become a `warning`, since it predicts that
 ArgoCD will deploy nothing from the ApplicationSet. Only a reason this module is sure of
 may raise `ArgoTemplateError`; in doubt it raises `UnsupportedTemplateError`.

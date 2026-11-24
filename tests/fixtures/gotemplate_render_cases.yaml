@@ -64,6 +64,86 @@ params:
   argo_from_yaml: {value: "hello: world"}
   argo_bad_yaml: {value: "non\n compliant\n yaml"}
   argo_from_yaml_array: {value: "- hello world\n- bonjour tout le monde"}
+  docs_clusters:
+    clusters: [{name: cluster1, server: "https://one"}, {name: cluster2, server: "https://two"}]
+  docs_patch_on:
+    cluster: engineering-dev
+    url: https://kubernetes.default.svc
+    autoSync: true
+    prune: true
+    valueFiles: [values.large.yaml, values.debug.yaml]
+  docs_patch_off:
+    cluster: engineering-prod
+    url: https://kubernetes.default.svc
+    autoSync: false
+    prune: false
+    valueFiles: []
+  docs_branch: {name: app, branch: "feat/JIRA-1234_Add a very long feature branch name"}
+  docs_components:
+    key: {components: [{name: guestbook, chart: guestbook, version: 1.2.3}, {name: redis, chart: redis, version: 17}]}
+  git_dir:
+    path: {path: clusters/prod/apps/billing-api, basename: billing-api, basenameNormalized: billing-api, segments: [clusters, prod, apps, billing-api]}
+    values: {team: payments, tier: backend}
+    valueFiles: [values.yaml, values-prod.yaml]
+    env: prod
+  yaml_strings:
+    plain: hello world
+    colon: "a: b"
+    hash: "a #b"
+    dash: "- a"
+    star: "*x"
+    quote: "it's"
+    lead: " x"
+    trail: "x "
+    "true": "true"
+    "null": "null"
+    float: "1.5"
+    octal: "0755"
+    base60: "1:20"
+    dots: "..."
+    path: /var/lib
+    url: "https://example.com:8443/x?y=1"
+    long: "a b c d e f g h i j k l m n o p q r s t u v w x y z a b c d e f g h i j k l m n o p q r s t u v w x y z"
+    date: "2024-01-02"
+    block: "line1\n  line2\n\nline4"
+    block_clip: "line1\nline2\n"
+    unicode: "héllo wörld"
+  yaml_numbers:
+    zero: 0
+    negzero: -0.0
+    int: 42
+    neg: -7
+    float: 3.25
+    big: 123456789012
+    bigger: 1.0e+18
+    huge: 1.0e+21
+    tiny: 0.0000001
+    small: 0.001
+  yaml_keys:
+    a10: 1
+    a9: 2
+    a: 3
+    B: 4
+    "_x": 5
+    "-y": 6
+    "1": 7
+    "10": 8
+    "2": 9
+    "a b": 10
+    "on": 11
+    "": 12
+    "x:y": 13
+    "a:": 14
+  yaml_nested:
+    list_of_lists: [[a, b], [c], []]
+    map_in_list: [{k: v, l: [x, y], m: {n: o}}, {}]
+    deep: {a: {b: {c: [1, {d: e}]}}}
+    multi_in_map: {text: "x\ny"}
+    multi_in_list_map: [{text: "x\ny"}]
+  git_file:
+    cluster: {name: in-cluster, address: "https://kubernetes.default.svc", labels: {env: staging, region: eu-west-1}}
+    apps: [{name: web, replicas: 2}, {name: worker, replicas: 1}]
+    path: {path: clusters/staging, basename: staging, filename: config.json, segments: [clusters, staging]}
 
 cases:
   # ---- Argo CD's TestRenderTemplateParamsGoTemplate (applicationset/utils/utils_test.go) ----
@@ -90,6 +170,89 @@ cases:
   - {template: '{{ get (fromYaml .value) "hello" }}', params: argo_bad_yaml}
   - {template: '{{ fromYamlArray .value | last }}', params: argo_from_yaml_array}
   - {template: '{{ fromYamlArray .value | last }}', params: argo_bad_yaml}
+
+  # ---- Templates from Argo CD's ApplicationSet documentation ----
+  # Generators-Cluster.md, flatList: Helm values built with range.
+  - params: docs_clusters
+    template: |
+      clusters:
+      {{- range .clusters }}
+        - name: {{ .name }}
+      {{- end }}
+  # Template.md: the templatePatch text, rendered like any template string.
+  - params: docs_patch_on
+    template: &patch |
+      spec:
+        source:
+          helm:
+            valueFiles:
+            {{- range $valueFile := .valueFiles }}
+              - {{ $valueFile }}
+            {{- end }}
+      {{- if .autoSync }}
+        syncPolicy:
+          automated:
+            prune: {{ .prune }}
+      {{- end }}
+  - {params: docs_patch_off, template: *patch}
+  # GoTemplate.md: names and labels built with slugify.
+  - {params: docs_branch, template: 'hellos3-{{.name}}-{{ cat .branch | slugify 23 }}'}
+  - {params: docs_branch, template: '{{ cat .branch | slugify }}'}
+  - {params: docs_branch, template: '{{ cat .branch | slugify 50 false }}'}
+  # GoTemplate.md: each field is a template of its own, so these fail.
+  - {params: docs_patch_on, template: '{{range .parameters}}'}
+  - {params: docs_patch_on, template: '{{end}}'}
+  # Generators-Matrix.md: a raw string keeps Helm's own braces.
+  - {params: docs_patch_on, template: '{{ `{{ . | mustToPrettyJson }}` }}'}
+  # Generators-List.md: elementsYaml from a git file's content.
+  - {params: docs_components, template: '{{ .key.components | toJson }}'}
+
+  # ---- Realistic combinations ----
+  - {params: git_dir, template: '{{ index .path.segments 1 }}-{{ .path.basename | normalize }}'}
+  - {params: git_dir, template: '{{ $env := index .path.segments 1 }}{{ $app := .path.basename }}{{ $app }}-{{ $env }}'}
+  - {params: git_dir, template: '{{ if eq .env "prod" }}https://prod.example.com{{ else }}https://kubernetes.default.svc{{ end }}'}
+  - {params: git_dir, template: '{{ if eq (index .path.segments 1) "prod" }}manual{{ else }}auto{{ end }}'}
+  - {params: git_dir, template: '{{ default "default" .project }}-{{ .values.team | upper }}'}
+  - {params: git_dir, template: '{{ .path.path | trimPrefix "clusters/" | replace "/" "-" }}'}
+  - params: git_dir
+    template: |
+      valueFiles:
+      {{- range $f := .valueFiles }}
+        - {{ $.path.path }}/{{ $f }}
+      {{- end }}
+  - params: git_dir
+    template: |
+      {{- with .values }}
+      {{- range $k, $v := . }}
+      {{ $k }}: {{ $v | quote }}
+      {{- end }}
+      {{- end }}
+  - params: git_dir
+    template: |
+      {{- range $i, $s := .path.segments }}{{ if $i }}/{{ end }}{{ $s | lower }}{{ end }}
+  - params: git_file
+    template: |
+      {{- with .cluster }}
+      name: {{ .name }}
+      server: {{ .address }}
+      {{- with .labels }}
+      env: {{ .env }}
+      region: {{ .region | default "none" }}
+      {{- end }}
+      {{- end }}
+  - params: git_file
+    template: |
+      {{- range .apps }}
+      - name: {{ .name }}
+        replicas: {{ .replicas }}
+      {{- end }}
+  - {params: git_file, template: '{{ .cluster.labels | toYaml | indent 4 }}'}
+  - {params: git_file, template: '{{ printf "%s-%s" .cluster.name .path.basename }}'}
+  - {params: git_file, template: '{{ if and .cluster.labels (not .disabled) }}on{{ else }}off{{ end }}'}
+  - {params: git_file, template: '{{ if or .missing (eq .cluster.labels.env "staging") }}staging{{ end }}'}
+  - {params: git_file, template: '{{ .cluster.labels.team }}'}
+  - {params: git_file, template: '{{ range .apps }}{{ .name }}={{ .replicas }};{{ end }}'}
+  - {params: git_file, template: '{{ dig "cluster" "labels" "region" "unknown" . }}'}
 
   # ---- Text, actions and whitespace trimming ----
   - {template: ''}
@@ -338,7 +501,7 @@ cases:
   - {template: '{{ printf "%v" .n }}'}
   - {template: '{{ printf "%s" .n }}'}
   - {template: '{{ printf "%s-%s" .s .missing }}'}
-  - {template: '{{ printf "%v" .missing }}'}
+  - {template: '{{ printf "%v" .missing }}', unsupported: printf of a nil value}
   - {template: '{{ printf "%05.2f" .f }}'}
   - {template: '{{ printf "%q" .s }}'}
   - {template: '{{ cat .branch | slugify 50 false }}'}
@@ -352,3 +515,165 @@ cases:
   - {template: '{{ default "d" .e }}'}
   - {template: '{{ default "d" .n }}'}
   - {template: '{{ quote .s .n }}'}
+
+  # ---- Each supported function: edge cases ----
+  # and, or, not
+  - {template: '{{ and .s .n }}|{{ and .e .n }}|{{ and .s .missing }}|{{ and .t .fl .s }}'}
+  - {template: '{{ or .e .n }}|{{ or .e .fl }}|{{ or .missing .s }}|{{ or .z .el .em }}'}
+  - {template: '{{ and .missing .s }}'}
+  - {template: '{{ or .e .missing }}'}
+  - {template: '{{ and .fl (index .missing "x") }}'}
+  - {template: '{{ or .t (index .missing "x") }}'}
+  - {template: '{{ .s | and .t }}|{{ .e | or .fl }}|{{ .s | and .fl }}'}
+  - {template: '{{ and }}'}
+  - {template: '{{ and .l .m }}|{{ or .el .m }}'}
+  - {template: '{{ not .s }}|{{ not .e }}|{{ not .missing }}|{{ not .z }}|{{ not 0 }}|{{ not .l }}|{{ not .em }}'}
+  - {template: '{{ not .s .t }}'}
+  - {template: '{{ .t | not }}'}
+  # eq, ne
+  - {template: '{{ eq .s "a" }}|{{ eq .s "b" }}|{{ eq .e "" }}|{{ eq .t true }}|{{ eq .fl true }}'}
+  - {template: '{{ eq .n 1.0 }}|{{ eq .f 1.5 }}|{{ eq .neg -3.0 }}|{{ eq 1 1 }}|{{ eq 1 2 }}'}
+  - {template: '{{ eq .s "x" "y" "a" }}|{{ eq .s "x" "y" }}'}
+  - {template: '{{ eq .missing .z }}|{{ eq .missing nil }}|{{ eq .s nil }}|{{ eq nil .s }}'}
+  - {template: '{{ eq .s }}'}
+  - {template: '{{ eq .s 1 }}'}
+  - {template: '{{ eq .t "true" }}'}
+  - {template: '{{ eq .s "x" 1 }}'}
+  - {template: '{{ eq .s "a" 1 }}'}
+  - {template: '{{ eq .l .l }}'}
+  - {template: '{{ eq .m "a" }}'}
+  - {template: '{{ ne .s "a" }}|{{ ne .s "b" }}|{{ ne .missing .s }}|{{ ne .n 2.0 }}'}
+  - {template: '{{ ne .s "a" "b" }}'}
+  - {template: '{{ ne .n 1 }}'}
+  - {template: '{{ .s | eq "a" }}|{{ "a" | eq .s }}'}
+  # index
+  - {template: '{{ index .l 0 }}|{{ index .l 1 }}|{{ index .m "a" }}|{{ index .m "c" "d" }}'}
+  - {template: '{{ index .l 2 }}'}
+  - {template: '{{ index .l -1 }}'}
+  - {template: '{{ index .l .n }}'}
+  - {template: '{{ index .l "0" }}'}
+  - {template: '{{ index .l nil }}'}
+  - {template: '{{ index .m 1 }}'}
+  - {template: '{{ index .m .missing }}'}
+  - {template: '{{ index .m "zz" "y" }}'}
+  - {template: '{{ index .nl 3 }}'}
+  - {template: '{{ index .nl 3 "x" }}'}
+  - {template: '{{ index .items 0 "name" }}|{{ index .items 1 "name" }}'}
+  - {template: '{{ index .s 0 }}', unsupported: index of a string gives a byte}
+  - {template: '{{ index .n 0 }}'}
+  - {template: '{{ index .z "a" }}'}
+  - {template: '{{ index .m }}'}
+  - {template: '{{ index . "s" }}|{{ index $ "s" }}'}
+  - {template: '{{ index .em "a" }}|{{ index .keyuni "clé" }}'}
+  - {template: '{{ index .path.segments 0 | upper }}'}
+  # printf
+  - {template: '{{ printf "%s" .s }}|{{ printf "%v" .s }}|{{ printf "%q" .uni }}|{{ printf "%5s|%-5s|" .s .s }}'}
+  - {template: '{{ printf "%v" .f }}|{{ printf "%v" .big }}|{{ printf "%v" .small }}|{{ printf "%.2f" .frac }}|{{ printf "%f" .neg }}|{{ printf "%08.3f" .neg }}'}
+  - {template: '{{ printf "%d" 3 }}|{{ printf "%05d" -3 }}|{{ printf "%v" 3 }}|{{ printf "%t" .t }}|{{ printf "%v" .fl }}'}
+  - {template: '{{ printf "%v" .l }}|{{ printf "%v" .m }}|{{ printf "%v" .nl }}'}
+  - {template: '{{ printf "%.1s" .branch }}|{{ printf "%.0s" .s }}|{{ printf "%.3q" .branch }}'}
+  - {template: '{{ printf "100%%" }}|{{ printf "" }}|{{ printf "no verbs" }}'}
+  - {template: '{{ printf "%s" .missing }}'}
+  - {template: '{{ printf "%s" .z }}'}
+  - {template: '{{ printf "%s %s" .s }}'}
+  - {template: '{{ printf "%s" .s .s }}'}
+  - {template: '{{ printf "%d" .s }}'}
+  - {template: '{{ printf "%x" .s }}', unsupported: printf verb x}
+  - {template: '{{ printf "%+d" 3 }}', unsupported: printf flag +}
+  - {template: '{{ printf "%s" .t }}'}
+  - {template: '{{ printf "%f" 3 }}'}
+  - {template: '{{ printf "%" }}'}
+  - {template: '{{ printf .s }}'}
+  - {template: '{{ printf .n }}'}
+  - {template: '{{ printf }}'}
+  - {template: '{{ .s | printf "%s-x" }}'}
+  - {template: '{{ printf "%s" .html }}|{{ printf "%q" .html }}|{{ printf "%q" .multi }}'}
+  # default
+  - {template: '{{ default "d" .s }}|{{ default "d" .e }}|{{ default "d" .missing }}|{{ default "d" .z }}'}
+  - {template: '{{ default "d" .n }}|{{ default "d" 0 }}|{{ default "d" .fl }}|{{ default "d" .t }}|{{ default "d" .el }}|{{ default "d" .em }}|{{ default "d" .l }}'}
+  - {template: '{{ default "d" }}|{{ default "d" .e .s }}|{{ default .s .missing }}|{{ default .missing .missing }}'}
+  - {template: '{{ default }}'}
+  - {template: '{{ .missing | default "d" }}|{{ .s | default "d" }}'}
+  - {template: '{{ default .m .missing }}|{{ default 3 .missing }}'}
+  # lower, upper
+  - {template: '{{ lower "ABC-Def_1" }}|{{ upper "abc-Def_1" }}|{{ lower "" }}|{{ .branch | lower }}'}
+  - {template: '{{ lower .uni }}', unsupported: lower of non-ASCII text}
+  - {template: '{{ upper "straße" }}', unsupported: upper of non-ASCII text}
+  - {template: '{{ lower .n }}'}
+  - {template: '{{ lower .missing }}'}
+  - {template: '{{ lower .z }}'}
+  - {template: '{{ lower 3 }}'}
+  - {template: '{{ lower .s .s }}'}
+  # replace
+  - {template: '{{ replace "/" "-" .path.path }}|{{ replace "" "-" "ab" }}|{{ replace "x" "y" "" }}|{{ "a.b.c" | replace "." "" }}'}
+  - {template: '{{ replace "a" "b" .n }}'}
+  - {template: '{{ replace "a" "b" }}'}
+  # trimPrefix, trimSuffix
+  - {template: '{{ trimPrefix "apps/" .path.path }}|{{ trimPrefix "x" .s }}|{{ trimPrefix "" .s }}|{{ trimPrefix "a" "a" }}|{{ trimPrefix "aa" "aaa" }}'}
+  - {template: '{{ trimSuffix "/foo" .path.path }}|{{ trimSuffix ".yaml" "values.yaml.yaml" }}|{{ "file.txt" | trimSuffix ".txt" }}'}
+  - {template: '{{ trimPrefix "a" .missing }}'}
+  - {template: '{{ trimSuffix .n "a" }}'}
+  # quote
+  - {template: '{{ quote .s }}|{{ quote .e }}|{{ quote .missing }}|{{ quote .z }}|{{ quote }}|{{ quote .t .f .big }}'}
+  - {template: '{{ quote .html }}|{{ quote .multi }}|{{ quote .uni }}|{{ quote "a\"b\\c" }}|{{ quote "\t" }}'}
+  - {template: '{{ quote .l }}|{{ quote .m }}|{{ quote 3 }}'}
+  - {template: '{{ .s | quote }}'}
+  # cat
+  - {template: '{{ cat }}|{{ cat .s }}|{{ cat .s .e .s }}|{{ cat .missing }}|{{ cat .l .m }}|{{ cat .t .f 3 }}'}
+  - {template: '{{ cat .nl }}|{{ .s | cat "x" }}'}
+  # indent
+  - {template: '{{ indent 2 "a" }}|{{ indent 0 "a" }}|{{ indent 3 "" }}|{{ indent 2 .multi }}'}
+  - {template: '{{ indent -1 "a" }}'}
+  - {template: '{{ indent .n "a" }}'}
+  - {template: '{{ indent 2 .n }}'}
+  - {template: '{{ indent 2.5 "a" }}'}
+  - {template: '{{ indent 2.0 "a" }}'}
+  - {template: "{{ indent 2 \"a\\nb\\n\" }}"}
+  # base
+  - {template: '{{ base .path.path }}|{{ base "" }}|{{ base "/" }}|{{ base "a/b/" }}|{{ base "a//b" }}|{{ base "x" }}'}
+  - {template: '{{ base .n }}'}
+  # dig
+  - {template: '{{ dig "a" "d" .m }}|{{ dig "zz" "d" .m }}|{{ dig "c" "d" "x" .m }}|{{ dig "c" "zz" "x" .m }}'}
+  - {template: '{{ dig "path" "segments" "d" . }}|{{ dig "s" "d" . }}'}
+  - {template: '{{ dig "a" "x" "d" .m }}'}
+  - {template: '{{ dig "z" "x" "d" . }}'}
+  - {template: '{{ dig "z" "d" . }}'}
+  - {template: '{{ dig "a" .m }}'}
+  - {template: '{{ dig "a" "d" .s }}'}
+  - {template: '{{ dig "a" "d" .missing }}'}
+  - {template: '{{ dig 1 "d" .m }}'}
+  - {template: '{{ .m | dig "a" "d" }}'}
+  # toJson, mustToPrettyJson
+  - {template: '{{ toJson .s }}|{{ toJson .e }}|{{ toJson .t }}|{{ toJson .n }}|{{ toJson .neg }}|{{ toJson 3 }}|{{ toJson 2.5 }}'}
+  - {template: '{{ toJson .items }}|{{ toJson .path }}|{{ toJson .em }}|{{ toJson .el }}'}
+  - {template: '{{ toJson .multi }}|{{ toJson .tilde }}|{{ toJson "\t\u0001\u007f " }}'}
+  - {template: '{{ toJson . }}'}
+  - {template: '{{ mustToPrettyJson .items }}'}
+  - {template: '{{ mustToPrettyJson .nl }}|{{ mustToPrettyJson .s }}|{{ mustToPrettyJson .missing }}|{{ mustToPrettyJson .el }}'}
+  - {template: '{{ mustToPrettyJson . }}'}
+  # toYaml
+  - {template: '{{ toYaml .items }}'}
+  - {template: '{{ toYaml .path }}'}
+  - {template: '{{ toYaml .l }}'}
+  - {params: yaml_strings, template: '{{ toYaml . }}'}
+  - {params: yaml_numbers, template: '{{ toYaml . }}'}
+  - {params: yaml_keys, template: '{{ toYaml . }}'}
+  - {params: yaml_nested, template: '{{ toYaml . }}'}
+  - {params: yaml_strings, template: '{{ toYaml .long }}', unsupported: a long string folded outside a map}
+  - {params: yaml_strings, template: '{{ toYaml .date }}'}
+  - {params: yaml_strings, template: '{{ toYaml .block }}'}
+  - {params: yaml_strings, template: '{{ toYaml .block_clip }}'}
+  - {template: '{{ toYaml 3 }}|{{ toYaml 2.5 }}|{{ toYaml true }}|{{ toYaml "x" }}'}
+  - {template: '{{ toYaml .s .s }}'}
+  # normalize, slugify
+  - {template: '{{ normalize .branch }}|{{ normalize "" }}|{{ normalize "--A.B--" }}|{{ normalize "İSTANBUL" }}|{{ normalize "Ünïcödé Ωmega" }}'}
+  - {template: '{{ normalize .n }}'}
+  - {template: '{{ slugify "Hello World" }}|{{ slugify "" }}|{{ slugify "a.b_c" }}|{{ slugify "İSTANBUL" }}|{{ slugify "Ünïcödé Ωmega" }}'}
+  - {template: '{{ slugify 5 "hello world" }}|{{ slugify 5 "helloworld" }}|{{ slugify 5 false "hello world" }}|{{ slugify 0 "abc" }}|{{ slugify 0 false "abc" }}'}
+  - {template: '{{ slugify 11 "hello-world-foo" }}|{{ slugify 6 "hello-world" }}|{{ slugify 3 true "abcdef" }}|{{ slugify 50 true "x" "y" "name" }}'}
+  - {template: '{{ slugify .n "abc" }}'}
+  - {template: '{{ slugify 3 "x" .s }}'}
+  - {template: '{{ slugify .n }}'}
+  - {template: '{{ slugify -1 false "abc" }}'}
+  - {template: '{{ slugify -1 "abc" }}'}
+  - {template: '{{ .branch | slugify 10 }}'}
