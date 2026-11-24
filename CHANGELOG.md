@@ -5,6 +5,8 @@ All notable changes to this project are documented in this file, following
 
 ## [Unreleased]
 
+## [1.5.0] - 2026-11-24
+
 ### Added
 
 - The git generator's `pathParamPrefix` and `values`. ArgoCD requires `pathParamPrefix` in a

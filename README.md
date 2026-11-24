@@ -172,7 +172,7 @@ against the change itself. The branch is read from `GITHUB_BASE_REF` (GitHub) or
 `--target-branch main`.
 
 Each tag of the GitHub Action and the GitLab component installs its own release of the tool,
-so `@v1.4.1` always runs 1.4.1. On GitHub, `@v1` follows the latest 1.x release.
+so `@v1.5.0` always runs 1.5.0. On GitHub, `@v1` follows the latest 1.x release.
 
 ### GitHub Actions
 
@@ -191,7 +191,7 @@ jobs:
         with:
           fetch-depth: 0
 
-      - uses: gillesl-dev/argocd-source-lint@v1.4.1
+      - uses: gillesl-dev/argocd-source-lint@v1.5.0
 ```
 
 `fetch-depth: 0` fetches every branch and tag, so Applications pinned to another branch or a
@@ -222,7 +222,7 @@ published in the CI/CD Catalog.
 
 ```yaml
 include:
-  - component: $CI_SERVER_FQDN/<your-gitlab-group>/argocd-source-lint/lint@v1.4.1
+  - component: $CI_SERVER_FQDN/<your-gitlab-group>/argocd-source-lint/lint@v1.5.0
 ```
 
 GitLab runs merge request pipelines only when the project's own `.gitlab-ci.yml` asks for
@@ -262,7 +262,7 @@ The hook needs Python 3.11 or later as pre-commit's default Python.
 ```yaml
 repos:
   - repo: https://github.com/gillesl-dev/argocd-source-lint
-    rev: v1.4.1
+    rev: v1.5.0
     hooks:
       - id: argocd-source-lint
 ```
