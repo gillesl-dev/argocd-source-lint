@@ -442,7 +442,7 @@ spec:
     assert "cluster/API access" in findings[0].message
 
 
-def test_go_template_appset_is_flagged_and_skipped_entirely(git_repo):
+def test_go_template_appset_is_expanded(git_repo):
     repo_root = git_repo(
         {
             "bootstrap/appsets/go-template-appset.yaml": """\
@@ -470,9 +470,9 @@ spec:
 
     applications, findings = _discover(repo_root)
 
-    assert applications == []
-    assert len(findings) == 1
-    assert "goTemplate" in findings[0].message
+    assert findings == []
+    assert [app.name for app in applications] == ["myapp-dev"]
+    assert applications[0].sources[0].path == "manifests/app"
 
 
 def test_git_generator_on_external_repo_produces_info_finding(git_repo):

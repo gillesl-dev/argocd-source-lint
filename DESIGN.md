@@ -223,8 +223,8 @@ unresolvable, there are no known keys to merge on. If a later child is unresolva
 base entries stay valid and only that child's overrides are missing.
 
 Generators that need external state are reported as `unresolvable-generator`: `clusters`,
-`scmProvider`, `pullRequest`, `plugin`, external Git repositories and
-`goTemplate: true`, as are `templatePatch` and generator-level `selector`. The files the
+`scmProvider`, `pullRequest`, `plugin` and external Git repositories, as are
+`templatePatch` and generator-level `selector`. The files the
 missing Applications may deploy are taken from the template's source paths, up to their
 first placeholder, or from the git generators' paths, and `orphan-source` reports them as
 `info` instead of `error`.
@@ -262,6 +262,25 @@ flags other than `-` and `0`, verbs other than `s d v q t f`; `lower` and `upper
 non-ASCII text (Go maps rune by rune, Python applies full case mappings); `index` of a
 string (a byte); and `toYaml` output it can't predict: timestamps with a time part,
 multiline strings in lists, long strings folded outside a map, or strings needing escapes.
+
+Python 3.11 to 3.14 ship Unicode 14.0 to 16.0, Go 1.25 Unicode 15.0. Where the result
+depends on a character's category (printable for `quote` and `printf %q`, letter or digit
+for identifiers and `toYaml`'s key order), the characters whose category differs in one of
+these versions (`unicode_unstable.py`) are refused, and a test checks on each Python that
+every other code point has Go's category. `toYaml`'s printable test is go-yaml's own,
+on UTF-8 bytes, so it does not depend on Unicode tables.
+
+In goTemplate mode, generators keep their values as they are (`appset_go_params.py`):
+nested maps, lists, float64 numbers; the git generator gives `path` as a map with
+`segments`, and its `values` as a Go `map[string]string`. A `matrix` renders its second
+child with each non-empty entry of the first, and `matrix` and `merge` combine entries
+with mergo, whose rules the oracle confirms: a nil, a scalar or a list replaces, maps
+merge, and merging a map of any type into the git `values` map panics, which fails the
+ApplicationSet. Kubernetes reads the manifest as YAML 1.1 and this tool as YAML 1.2, so a
+`list` element holding a value they may read differently (`yes`, `y` as a key, `0755`, a
+date) is refused, unless it is quoted: ruamel's line and column of the scalar, checked
+against the manifest's text, tell a quoted string, which both versions read alike. A
+matrix checks its second child before rendering it, since rendering loses these positions.
 
 Both are `info` today. The first could later become a `warning`, since it predicts that
 ArgoCD will deploy nothing from the ApplicationSet. Only a reason this module is sure of

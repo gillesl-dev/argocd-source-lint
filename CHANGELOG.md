@@ -5,6 +5,21 @@ All notable changes to this project are documented in this file, following
 
 ## [Unreleased]
 
+### Added
+
+- ApplicationSets with `goTemplate: true` are expanded, and their Applications go through
+  every rule. The Go templates are rendered for a subset of `text/template` and 23 functions,
+  checked against ArgoCD's own code; anything else is an `unresolvable-generator` `info`
+  finding for the whole ApplicationSet. See [docs/rules.md](./docs/rules.md#unresolvable-generator)
+  and the README's Limitations.
+
+### Changed
+
+- The `unresolvable-generator` finding for `goTemplate: true` ("out of scope v1") is gone:
+  these ApplicationSets now generate their Applications, or get a finding that says why not,
+  either "Argo CD can't expand this ApplicationSet" or "not supported by this tool". A
+  baseline that held the old finding no longer matches it.
+
 ### Fixed
 
 - The `*Normalized` parameters of the git generator now lowercase `İ` (U+0130) to `i`, as

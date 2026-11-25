@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import dataclasses
 import posixpath
 import re
 from collections.abc import Iterator
@@ -7,7 +8,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from argocd_source_lint import appset_params
+from argocd_source_lint import appset_go_params, appset_params, gotemplate
+from argocd_source_lint.appset_go_params import UnsupportedParamsError
 from argocd_source_lint.appset_params import LimitError, ParamsError
 from argocd_source_lint.fsutil import discover_documents, walk_tree
 from argocd_source_lint.git_context import (
@@ -42,6 +44,21 @@ class GeneratorContext:
         default_factory=dict, compare=False, hash=False
     )
     revisions: set[str] = field(default_factory=set, compare=False, hash=False)
+    # goTemplate: params keep their types, and matrix and merge use mergo.
+    go_template: bool = False
+    go_template_options: tuple[str, ...] = ()
+    # The manifest's lines, to tell quoted scalars from plain ones (YAML 1.1).
+    source_lines: tuple[str, ...] = ()
+    # Set once check_manifest_elements has checked the list elements.
+    elements_checked: bool = False
+    # Shared by every string the ApplicationSet renders (gotemplate bounds).
+    go_template_budget: gotemplate.Budget = field(
+        default_factory=gotemplate.Budget, compare=False, hash=False
+    )
+
+    @property
+    def rendering(self) -> appset_go_params.Rendering:
+        return appset_go_params.Rendering(self.go_template_options, self.go_template_budget)
 
 
 # An ApplicationSet comes from the repository, which may not be trusted: every
@@ -130,16 +147,10 @@ def _expand_spec(
         source_file=source_file,
         severity=severity,
         new_git_file_globbing=new_git_file_globbing,
+        go_template=bool(spec.get("goTemplate")),
+        go_template_options=tuple(str(option) for option in spec.get("goTemplateOptions") or ()),
+        source_lines=_source_lines(manifest_path) if spec.get("goTemplate") else (),
     )
-
-    if spec.get("goTemplate"):
-        return [], [
-            _finding(
-                ctx,
-                "`goTemplate: true` (Go template rendering) is out of scope v1 — "
-                "only the classic `{{key}}` substitution is supported.",
-            )
-        ]
 
     if spec.get("templatePatch"):
         return [], [
@@ -171,6 +182,24 @@ def _expand_spec(
                 "Applications it generates are not checked.",
             )
         ]
+    except UnsupportedParamsError as exc:
+        # Never a partial expansion: Applications rendered from the other
+        # param sets could be ones Argo CD does not create.
+        return [], [
+            _finding(
+                ctx,
+                f"ApplicationSet not expanded, not supported by this tool: {exc}. The "
+                "Applications it generates are not checked.",
+            )
+        ]
+
+
+def _source_lines(manifest_path: Path) -> tuple[str, ...]:
+    # Split on LF only, as ruamel counts lines.
+    try:
+        return tuple(manifest_path.read_text(encoding="utf-8").split("\n"))
+    except (OSError, UnicodeDecodeError):
+        return ()
 
 
 def _expand_generators(
@@ -197,6 +226,27 @@ def _expand_generators(
         # A generator can carry its own `template`, merged over the spec's.
         effective_template = _merged(template, _generator_template(generator))
         for params in param_sets:
+            if ctx.go_template:
+                # RenderTemplateParams leaves the template as it is without params.
+                rendered = (
+                    appset_go_params.render_template(effective_template, params, ctx.rendering)
+                    if params
+                    else effective_template
+                )
+                try:
+                    applications.append(
+                        _application_from(rendered, manifest_path, repo_root, appset_namespace)
+                    )
+                except INVALID_MANIFEST_ERRORS as exc:
+                    findings.append(
+                        _finding(
+                            ctx,
+                            f"template renders an invalid Application ({invalid_reason(exc)}), "
+                            "so the Applications it generates are not checked.",
+                        )
+                    )
+                    break
+                continue
             unresolved = _unresolved_placeholders(
                 _checked_fields(_substitute(effective_template, params))
             )
@@ -235,7 +285,14 @@ def _build_generated_application(
     repo_root: Path,
     appset_namespace: str,
 ) -> Application:
-    rendered = _substitute(template, params)
+    return _application_from(
+        _substitute(template, params), manifest_path, repo_root, appset_namespace
+    )
+
+
+def _application_from(
+    rendered: dict[str, Any], manifest_path: Path, repo_root: Path, appset_namespace: str
+) -> Application:
     # ArgoCD always overwrites a generated Application's namespace with the
     # ApplicationSet's own, ignoring the template's (GenerateApplications in
     # applicationset/controllers/template/template.go).
@@ -287,6 +344,11 @@ def _resolve_list(
     elements = list_generator.get("elements") or []
     if not isinstance(elements, list):
         raise ParamsError("the list generator's `elements` is not a list")
+    if ctx.go_template:
+        lines = None if ctx.elements_checked else ctx.source_lines
+        return appset_go_params.list_param_sets(
+            elements, list_generator.get("elementsYaml"), lines
+        ), []
     return appset_params.list_param_sets(elements, list_generator.get("elementsYaml")), []
 
 
@@ -349,9 +411,15 @@ def _resolve_git(
     # With both set, Argo CD uses `directories` and ignores `files`.
     directories = git_generator.get("directories") or []
     if directories:
+        found = _resolve_git_directories(ctx, base_root, directories)
+        if ctx.go_template:
+            rendering = ctx.rendering
+            return [
+                appset_go_params.directory_params(directory, prefix, values, rendering)
+                for directory in found
+            ], []
         return [
-            appset_params.directory_params(directory, prefix, values)
-            for directory in _resolve_git_directories(ctx, base_root, directories)
+            appset_params.directory_params(directory, prefix, values) for directory in found
         ], []
     files = git_generator.get("files") or []
     return _resolve_git_files(ctx, base_root, files, prefix, values), []
@@ -425,7 +493,14 @@ def _resolve_git_files(
             )
         try:
             text = path.read_text(encoding="utf-8")
-            param_sets.extend(appset_params.git_file_param_sets(rel_path, text, prefix, values))
+            if ctx.go_template:
+                param_sets.extend(
+                    appset_go_params.git_file_param_sets(
+                        rel_path, text, prefix, values, ctx.rendering
+                    )
+                )
+            else:
+                param_sets.extend(appset_params.git_file_param_sets(rel_path, text, prefix, values))
         except (OSError, UnicodeDecodeError, ParamsError) as exc:
             raise ParamsError(f"`{rel_path}` of the git files generator: {exc}") from exc
     return param_sets
@@ -465,6 +540,8 @@ def _resolve_matrix(
         ]
 
     first, second = children
+    if ctx.go_template:
+        return _resolve_go_matrix(first, second, ctx)
     first_params, first_findings = _resolve_generator(first, ctx)
     findings.extend(first_findings)
     if _unresolved_placeholders(second):
@@ -521,6 +598,37 @@ def _resolve_matrix(
     return combined, findings
 
 
+def _resolve_go_matrix(
+    first: dict[str, Any], second: dict[str, Any], ctx: GeneratorContext
+) -> tuple[list[dict[str, Any]], list[Finding]]:
+    """A matrix in goTemplate mode (MatrixGenerator.GenerateParams): the
+    second child is rendered with each non-empty entry of the first, and each
+    pair is merged with mergo, the first child's values winning."""
+    first_params, findings = _resolve_generator(first, ctx)
+    if len(first_params) > _MAX_MATRIX_COMBINATIONS:
+        raise LimitError(
+            f"the matrix generator's first child has more than {_MAX_MATRIX_COMBINATIONS} entries"
+        )
+    # Kubernetes reads the manifest once, before any rendering.
+    appset_go_params.check_manifest_elements(second, ctx.source_lines)
+    checked_ctx = dataclasses.replace(ctx, elements_checked=True)
+    combined: list[dict[str, Any]] = []
+    for entry in first_params:
+        # Transform interpolates the child only with non-empty params.
+        child = appset_go_params.render_generator(second, entry, ctx.rendering) if entry else second
+        params, child_findings = _resolve_generator(child, checked_ctx)
+        # The same gap found for every entry is reported once.
+        findings.extend(f for f in child_findings if f not in findings)
+        for other in params:
+            merged = appset_go_params.mergo_merge(appset_go_params.mergo_merge({}, other), entry)
+            combined.append(merged)
+        if len(combined) > _MAX_MATRIX_COMBINATIONS:
+            raise LimitError(
+                f"the matrix generator produces more than {_MAX_MATRIX_COMBINATIONS} combinations"
+            )
+    return combined, findings
+
+
 def _resolve_merge(
     merge_generator: dict[str, Any], ctx: GeneratorContext
 ) -> tuple[list[dict[str, Any]], list[Finding]]:
@@ -560,7 +668,9 @@ def _resolve_merge(
         if was_unresolvable:
             continue
         for key, entry in by_key.items():
-            if key in merged:
+            if key in merged and ctx.go_template:
+                merged[key] = appset_go_params.mergo_merge(merged[key], entry)
+            elif key in merged:
                 merged[key].update(entry)
 
     return list(merged.values()), findings

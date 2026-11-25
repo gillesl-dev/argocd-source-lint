@@ -152,6 +152,24 @@ The first run downloads Argo CD's Go dependencies (about 1.5 GB) into the
 `argocd-oracle-gomod` Docker volume and takes several minutes. `tools/` is excluded from the
 sdist and the wheel.
 
+The oracle runs three times, and results that depend on Go's map order are normalized; a
+result that still changes between runs stops the script instead of rewriting the files.
+
+It also writes Go's Unicode categories to `tests/fixtures/go_unicode_categories.json`. When
+that file or the supported Python versions change, recompute the characters the Go template
+functions refuse, those whose category differs in one of the Python versions:
+
+```bash
+uv run python tools/unicode_unstable.py
+```
+
+After changing the Go template code, run the differential fuzzer, which renders thousands of
+random inputs with the oracle and with this tool and fails on any different output:
+
+```bash
+uv run python tools/argocd-oracle/fuzz.py 20000
+```
+
 ## Releasing
 
 1. Bump `version` in `pyproject.toml`, run `uv lock`, and update the same version in

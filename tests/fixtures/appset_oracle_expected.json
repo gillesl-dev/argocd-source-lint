@@ -263,6 +263,1548 @@
       }
     ]
   },
+  "gt-argo-example-matrix-list-and-list": {
+    "applications": null,
+    "error": "failed to execute go template {{.path.path}}: template: base:1:7: executing \"base\" at <.path.path>: map has no entry for key \"path\"",
+    "params": [
+      [
+        {
+          "cluster": "engineering-dev",
+          "url": "https://kubernetes.default.svc",
+          "values": {
+            "project": "default",
+            "suffix": "1"
+          }
+        },
+        {
+          "cluster": "engineering-dev",
+          "url": "https://kubernetes.default.svc",
+          "values": {
+            "project": "default",
+            "suffix": "2"
+          }
+        },
+        {
+          "cluster": "engineering-prod",
+          "url": "https://kubernetes.default.svc",
+          "values": {
+            "project": "default",
+            "suffix": "1"
+          }
+        },
+        {
+          "cluster": "engineering-prod",
+          "url": "https://kubernetes.default.svc",
+          "values": {
+            "project": "default",
+            "suffix": "2"
+          }
+        }
+      ]
+    ]
+  },
+  "gt-empty-params-left-as-is": {
+    "applications": [
+      {
+        "destinationName": "",
+        "destinationNamespace": "default",
+        "destinationServer": "https://kubernetes.default.svc",
+        "name": "app-dev",
+        "namespace": "argocd",
+        "project": "default",
+        "sources": [
+          {
+            "chart": "",
+            "path": "apps/dev",
+            "repoURL": "https://example.invalid/repo.git",
+            "targetRevision": "HEAD"
+          }
+        ]
+      },
+      {
+        "destinationName": "",
+        "destinationNamespace": "default",
+        "destinationServer": "https://kubernetes.default.svc",
+        "name": "app-{{ .env }}",
+        "namespace": "argocd",
+        "project": "default",
+        "sources": [
+          {
+            "chart": "",
+            "path": "apps/{{ .env }}",
+            "repoURL": "https://example.invalid/repo.git",
+            "targetRevision": "HEAD"
+          }
+        ]
+      }
+    ],
+    "params": [
+      [
+        {
+          "env": "dev"
+        },
+        {}
+      ]
+    ]
+  },
+  "gt-example-platform": {
+    "applications": [
+      {
+        "destinationName": "",
+        "destinationNamespace": "guestbook-dev",
+        "destinationServer": "https://kubernetes.default.svc",
+        "name": "guestbook-dev",
+        "namespace": "argocd",
+        "project": "default",
+        "sources": [
+          {
+            "chart": "",
+            "path": "apps/dev/guestbook",
+            "repoURL": "https://example.invalid/repo.git",
+            "targetRevision": "HEAD"
+          }
+        ]
+      },
+      {
+        "destinationName": "",
+        "destinationNamespace": "guestbook-prod",
+        "destinationServer": "https://prod.example.com",
+        "name": "guestbook-prod",
+        "namespace": "argocd",
+        "project": "default",
+        "sources": [
+          {
+            "chart": "",
+            "path": "apps/prod/guestbook",
+            "repoURL": "https://example.invalid/repo.git",
+            "targetRevision": "HEAD"
+          }
+        ]
+      },
+      {
+        "destinationName": "",
+        "destinationNamespace": "redis-dev",
+        "destinationServer": "https://kubernetes.default.svc",
+        "name": "redis-dev",
+        "namespace": "argocd",
+        "project": "default",
+        "sources": [
+          {
+            "chart": "",
+            "path": "apps/dev/redis",
+            "repoURL": "https://example.invalid/repo.git",
+            "targetRevision": "HEAD"
+          }
+        ]
+      },
+      {
+        "destinationName": "",
+        "destinationNamespace": "redis-prod",
+        "destinationServer": "https://prod.example.com",
+        "name": "redis-prod",
+        "namespace": "argocd",
+        "project": "default",
+        "sources": [
+          {
+            "chart": "",
+            "path": "apps/prod/redis",
+            "repoURL": "https://example.invalid/repo.git",
+            "targetRevision": "HEAD"
+          }
+        ]
+      }
+    ],
+    "params": [
+      [
+        {
+          "app": "guestbook",
+          "cluster": {
+            "name": "dev",
+            "server": "https://kubernetes.default.svc"
+          },
+          "path": {
+            "basename": "dev",
+            "basenameNormalized": "dev",
+            "filename": "config.yaml",
+            "filenameNormalized": "config.yaml",
+            "path": "envs/dev",
+            "segments": [
+              "envs",
+              "dev"
+            ]
+          },
+          "port": 80
+        },
+        {
+          "app": "guestbook",
+          "cluster": {
+            "name": "prod",
+            "server": "https://prod.example.com"
+          },
+          "path": {
+            "basename": "prod",
+            "basenameNormalized": "prod",
+            "filename": "config.yaml",
+            "filenameNormalized": "config.yaml",
+            "path": "envs/prod",
+            "segments": [
+              "envs",
+              "prod"
+            ]
+          },
+          "port": 80
+        },
+        {
+          "app": "redis",
+          "cluster": {
+            "name": "dev",
+            "server": "https://kubernetes.default.svc"
+          },
+          "path": {
+            "basename": "dev",
+            "basenameNormalized": "dev",
+            "filename": "config.yaml",
+            "filenameNormalized": "config.yaml",
+            "path": "envs/dev",
+            "segments": [
+              "envs",
+              "dev"
+            ]
+          },
+          "port": 6379
+        },
+        {
+          "app": "redis",
+          "cluster": {
+            "name": "prod",
+            "server": "https://prod.example.com"
+          },
+          "path": {
+            "basename": "prod",
+            "basenameNormalized": "prod",
+            "filename": "config.yaml",
+            "filenameNormalized": "config.yaml",
+            "path": "envs/prod",
+            "segments": [
+              "envs",
+              "prod"
+            ]
+          },
+          "port": 6379
+        }
+      ]
+    ]
+  },
+  "gt-git-directories-prefix": {
+    "applications": [
+      {
+        "destinationName": "",
+        "destinationNamespace": "default",
+        "destinationServer": "https://kubernetes.default.svc",
+        "name": "prod-eu",
+        "namespace": "argocd",
+        "project": "default",
+        "sources": [
+          {
+            "chart": "",
+            "path": "clusters/Prod_EU",
+            "repoURL": "https://example.invalid/repo.git",
+            "targetRevision": "HEAD"
+          }
+        ]
+      }
+    ],
+    "params": [
+      [
+        {
+          "cl": {
+            "path": {
+              "basename": "Prod_EU",
+              "basenameNormalized": "prod-eu",
+              "path": "clusters/Prod_EU",
+              "segments": [
+                "clusters",
+                "Prod_EU"
+              ]
+            }
+          }
+        }
+      ]
+    ]
+  },
+  "gt-git-directories-values": {
+    "applications": [
+      {
+        "destinationName": "",
+        "destinationNamespace": "api",
+        "destinationServer": "https://kubernetes.default.svc",
+        "name": "api",
+        "namespace": "argocd",
+        "project": "default",
+        "sources": [
+          {
+            "chart": "",
+            "path": "apps/api",
+            "repoURL": "https://example.invalid/repo.git",
+            "targetRevision": "HEAD"
+          }
+        ]
+      },
+      {
+        "destinationName": "",
+        "destinationNamespace": "v1",
+        "destinationServer": "https://kubernetes.default.svc",
+        "name": "v1",
+        "namespace": "argocd",
+        "project": "default",
+        "sources": [
+          {
+            "chart": "",
+            "path": "apps/api/v1",
+            "repoURL": "https://example.invalid/repo.git",
+            "targetRevision": "HEAD"
+          }
+        ]
+      },
+      {
+        "destinationName": "",
+        "destinationNamespace": "web",
+        "destinationServer": "https://kubernetes.default.svc",
+        "name": "web",
+        "namespace": "argocd",
+        "project": "default",
+        "sources": [
+          {
+            "chart": "",
+            "path": "apps/web",
+            "repoURL": "https://example.invalid/repo.git",
+            "targetRevision": "HEAD"
+          }
+        ]
+      }
+    ],
+    "params": [
+      [
+        {
+          "path": {
+            "basename": "api",
+            "basenameNormalized": "api",
+            "path": "apps/api",
+            "segments": [
+              "apps",
+              "api"
+            ]
+          },
+          "values": {
+            "name": "api",
+            "plain": "fixed",
+            "second": "api"
+          }
+        },
+        {
+          "path": {
+            "basename": "v1",
+            "basenameNormalized": "v1",
+            "path": "apps/api/v1",
+            "segments": [
+              "apps",
+              "api",
+              "v1"
+            ]
+          },
+          "values": {
+            "name": "v1",
+            "plain": "fixed",
+            "second": "api"
+          }
+        },
+        {
+          "path": {
+            "basename": "web",
+            "basenameNormalized": "web",
+            "path": "apps/web",
+            "segments": [
+              "apps",
+              "web"
+            ]
+          },
+          "values": {
+            "name": "web",
+            "plain": "fixed",
+            "second": "web"
+          }
+        }
+      ]
+    ]
+  },
+  "gt-git-files-content": {
+    "applications": [
+      {
+        "destinationName": "",
+        "destinationNamespace": "default",
+        "destinationServer": "https://kubernetes.default.svc",
+        "name": "blank-config.yaml",
+        "namespace": "argocd",
+        "project": "default",
+        "sources": [
+          {
+            "chart": "",
+            "path": "envs/blank",
+            "repoURL": "https://example.invalid/repo.git",
+            "targetRevision": "HEAD"
+          }
+        ]
+      },
+      {
+        "destinationName": "",
+        "destinationNamespace": "default",
+        "destinationServer": "https://kubernetes.default.svc",
+        "name": "dev-config.json",
+        "namespace": "argocd",
+        "project": "default",
+        "sources": [
+          {
+            "chart": "",
+            "path": "envs/dev",
+            "repoURL": "https://example.invalid/repo.git",
+            "targetRevision": "HEAD"
+          }
+        ]
+      },
+      {
+        "destinationName": "",
+        "destinationNamespace": "default",
+        "destinationServer": "https://kubernetes.default.svc",
+        "name": "multi-config.yaml",
+        "namespace": "argocd",
+        "project": "default",
+        "sources": [
+          {
+            "chart": "",
+            "path": "envs/multi",
+            "repoURL": "https://example.invalid/repo.git",
+            "targetRevision": "HEAD"
+          }
+        ]
+      },
+      {
+        "destinationName": "",
+        "destinationNamespace": "default",
+        "destinationServer": "https://kubernetes.default.svc",
+        "name": "multi-config.yaml",
+        "namespace": "argocd",
+        "project": "default",
+        "sources": [
+          {
+            "chart": "",
+            "path": "envs/multi",
+            "repoURL": "https://example.invalid/repo.git",
+            "targetRevision": "HEAD"
+          }
+        ]
+      },
+      {
+        "destinationName": "",
+        "destinationNamespace": "default",
+        "destinationServer": "https://kubernetes.default.svc",
+        "name": "prod-config.yaml",
+        "namespace": "argocd",
+        "project": "default",
+        "sources": [
+          {
+            "chart": "",
+            "path": "envs/prod",
+            "repoURL": "https://example.invalid/repo.git",
+            "targetRevision": "HEAD"
+          }
+        ]
+      }
+    ],
+    "params": [
+      [
+        {
+          "cluster": {
+            "address": "https://dev.invalid",
+            "name": "dev",
+            "replicas": 2
+          },
+          "list": [
+            1,
+            "two",
+            null
+          ],
+          "path": {
+            "basename": "dev",
+            "basenameNormalized": "dev",
+            "filename": "config.json",
+            "filenameNormalized": "config.json",
+            "path": "envs/dev",
+            "segments": [
+              "envs",
+              "dev"
+            ]
+          },
+          "values": {
+            "cluster": "dev"
+          }
+        },
+        {
+          "cluster": {
+            "address": "https://prod.invalid",
+            "enabled": true,
+            "mode": 493,
+            "name": "prod"
+          },
+          "empty": null,
+          "path": {
+            "basename": "prod",
+            "basenameNormalized": "prod",
+            "filename": "config.yaml",
+            "filenameNormalized": "config.yaml",
+            "path": "envs/prod",
+            "segments": [
+              "envs",
+              "prod"
+            ]
+          },
+          "values": {
+            "cluster": "prod"
+          }
+        },
+        {
+          "cluster": {
+            "name": "m1"
+          },
+          "path": {
+            "basename": "multi",
+            "basenameNormalized": "multi",
+            "filename": "config.yaml",
+            "filenameNormalized": "config.yaml",
+            "path": "envs/multi",
+            "segments": [
+              "envs",
+              "multi"
+            ]
+          },
+          "values": {
+            "cluster": "multi"
+          }
+        },
+        {
+          "cluster": {
+            "name": "m2"
+          },
+          "path": {
+            "basename": "multi",
+            "basenameNormalized": "multi",
+            "filename": "config.yaml",
+            "filenameNormalized": "config.yaml",
+            "path": "envs/multi",
+            "segments": [
+              "envs",
+              "multi"
+            ]
+          },
+          "values": {
+            "cluster": "multi"
+          }
+        },
+        {
+          "path": {
+            "basename": "blank",
+            "basenameNormalized": "blank",
+            "filename": "config.yaml",
+            "filenameNormalized": "config.yaml",
+            "path": "envs/blank",
+            "segments": [
+              "envs",
+              "blank"
+            ]
+          },
+          "values": {
+            "cluster": "blank"
+          }
+        }
+      ]
+    ]
+  },
+  "gt-git-files-prefix": {
+    "applications": [
+      {
+        "destinationName": "",
+        "destinationNamespace": "default",
+        "destinationServer": "https://kubernetes.default.svc",
+        "name": "app-dev",
+        "namespace": "argocd",
+        "project": "default",
+        "sources": [
+          {
+            "chart": "",
+            "path": "envs/dev",
+            "repoURL": "https://example.invalid/repo.git",
+            "targetRevision": "HEAD"
+          }
+        ]
+      }
+    ],
+    "params": [
+      [
+        {
+          "f": {
+            "path": {
+              "basename": "dev",
+              "basenameNormalized": "dev",
+              "filename": "config.json",
+              "filenameNormalized": "config.json",
+              "path": "envs/dev",
+              "segments": [
+                "envs",
+                "dev"
+              ]
+            }
+          },
+          "name": "dev",
+          "path": "kept"
+        }
+      ]
+    ]
+  },
+  "gt-git-prefix-values-missingkey-error": {
+    "applications": null,
+    "error": "error generating params from git: error generating params from apps: failed to append templated values: failed to replace templated string: failed to replace templated string with rendered values: failed to execute go template {{.path.basename}}: template: base:1:7: executing \"base\" at <.path.basename>: map has no entry for key \"path\"",
+    "paramsError": "error generating params from git: error generating params from apps: failed to append templated values: failed to replace templated string: failed to replace templated string with rendered values: failed to execute go template {{.path.basename}}: template: base:1:7: executing \"base\" at <.path.basename>: map has no entry for key \"path\""
+  },
+  "gt-git-values-error": {
+    "applications": null,
+    "error": "error generating params from git: error generating params from apps: failed to append templated values: failed to replace templated string: failed to replace templated string with rendered values: failed to execute go template {{ .path.basename.x }}: template: base:1:8: executing \"base\" at <.path.basename.x>: can't evaluate field x in type interface {}",
+    "paramsError": "error generating params from git: error generating params from apps: failed to append templated values: failed to replace templated string: failed to replace templated string with rendered values: failed to execute go template {{ .path.basename.x }}: template: base:1:8: executing \"base\" at <.path.basename.x>: can't evaluate field x in type interface {}"
+  },
+  "gt-git-values-missing-key": {
+    "applications": [
+      {
+        "destinationName": "",
+        "destinationNamespace": "default",
+        "destinationServer": "https://kubernetes.default.svc",
+        "name": "app-web",
+        "namespace": "argocd",
+        "project": "default",
+        "sources": [
+          {
+            "chart": "",
+            "path": "apps/web",
+            "repoURL": "https://example.invalid/repo.git",
+            "targetRevision": "HEAD"
+          }
+        ]
+      }
+    ],
+    "params": [
+      [
+        {
+          "path": {
+            "basename": "web",
+            "basenameNormalized": "web",
+            "path": "apps/web",
+            "segments": [
+              "apps",
+              "web"
+            ]
+          },
+          "values": {
+            "team": "<no value>"
+          }
+        }
+      ]
+    ]
+  },
+  "gt-invalid-option": {
+    "applications": null,
+    "error": "panic: unrecognized option: bogus",
+    "params": [
+      [
+        {
+          "env": "dev"
+        }
+      ]
+    ]
+  },
+  "gt-known-field-fails": {
+    "applications": null,
+    "error": "failed to execute go template {{ .env.y }}: template: base:1:7: executing \"base\" at <.env.y>: can't evaluate field y in type interface {}",
+    "params": [
+      [
+        {
+          "env": "dev"
+        }
+      ]
+    ]
+  },
+  "gt-label-key-rendered": {
+    "applications": null,
+    "error": "failed to execute go template {{ .env.y }}: template: base:1:7: executing \"base\" at <.env.y>: can't evaluate field y in type interface {}",
+    "params": [
+      [
+        {
+          "env": "dev"
+        }
+      ]
+    ]
+  },
+  "gt-list-element-not-object": {
+    "applications": null,
+    "error": "error unmarshling list element json: cannot unmarshal string into Go value of type map[string]interface {}",
+    "paramsError": "error unmarshling list element json: cannot unmarshal string into Go value of type map[string]interface {}"
+  },
+  "gt-list-quoted-scalars": {
+    "applications": [
+      {
+        "destinationName": "",
+        "destinationNamespace": "default",
+        "destinationServer": "https://kubernetes.default.svc",
+        "name": "app-dev-1-true-yes-on",
+        "namespace": "argocd",
+        "project": "default",
+        "sources": [
+          {
+            "chart": "",
+            "path": "apps/no/0755",
+            "repoURL": "https://example.invalid/repo.git",
+            "targetRevision": "HEAD"
+          }
+        ]
+      }
+    ],
+    "params": [
+      [
+        {
+          "env": "dev",
+          "kafka": "true",
+          "mode": "yes",
+          "suffix": "1",
+          "tags": [
+            "no",
+            "0755"
+          ],
+          "y": "on"
+        }
+      ]
+    ]
+  },
+  "gt-list-raw-values": {
+    "applications": [
+      {
+        "destinationName": "",
+        "destinationNamespace": "default",
+        "destinationServer": "https://kubernetes.default.svc",
+        "name": "app-dev",
+        "namespace": "argocd",
+        "project": "default",
+        "sources": [
+          {
+            "chart": "",
+            "path": "apps/dev",
+            "repoURL": "https://example.invalid/repo.git",
+            "targetRevision": "HEAD"
+          }
+        ]
+      },
+      {
+        "destinationName": "",
+        "destinationNamespace": "default",
+        "destinationServer": "https://kubernetes.default.svc",
+        "name": "app-prod",
+        "namespace": "argocd",
+        "project": "default",
+        "sources": [
+          {
+            "chart": "",
+            "path": "apps/prod",
+            "repoURL": "https://example.invalid/repo.git",
+            "targetRevision": "HEAD"
+          }
+        ]
+      },
+      {
+        "destinationName": "",
+        "destinationNamespace": "default",
+        "destinationServer": "https://kubernetes.default.svc",
+        "name": "app-yaml",
+        "namespace": "argocd",
+        "project": "default",
+        "sources": [
+          {
+            "chart": "",
+            "path": "apps/yaml",
+            "repoURL": "https://example.invalid/repo.git",
+            "targetRevision": "HEAD"
+          }
+        ]
+      }
+    ],
+    "params": [
+      [
+        {
+          "big": 1e+21,
+          "env": "yaml",
+          "port": 8080,
+          "true": "on"
+        },
+        {
+          "cfg": {
+            "nested": {
+              "deep": 1
+            },
+            "region": "eu"
+          },
+          "enabled": true,
+          "env": "dev",
+          "nothing": null,
+          "ratio": 0.5,
+          "replicas": 3,
+          "tags": [
+            "a",
+            "b"
+          ],
+          "values": {
+            "dir": "d1"
+          }
+        },
+        {
+          "env": "prod"
+        }
+      ]
+    ]
+  },
+  "gt-list-yaml11-scalars": {
+    "applications": [
+      {
+        "destinationName": "",
+        "destinationNamespace": "default",
+        "destinationServer": "https://kubernetes.default.svc",
+        "name": "app-dev",
+        "namespace": "argocd",
+        "project": "default",
+        "sources": [
+          {
+            "chart": "",
+            "path": "apps/dev",
+            "repoURL": "https://example.invalid/repo.git",
+            "targetRevision": "HEAD"
+          }
+        ]
+      }
+    ],
+    "params": [
+      [
+        {
+          "day": "2024-01-02",
+          "enabled": true,
+          "env": "dev",
+          "mode": 493,
+          "true": 1
+        }
+      ]
+    ]
+  },
+  "gt-matrix-deep-merge": {
+    "applications": [
+      {
+        "destinationName": "",
+        "destinationNamespace": "default",
+        "destinationServer": "https://kubernetes.default.svc",
+        "name": "app-a",
+        "namespace": "argocd",
+        "project": "default",
+        "sources": [
+          {
+            "chart": "",
+            "path": "apps/a",
+            "repoURL": "https://example.invalid/repo.git",
+            "targetRevision": "HEAD"
+          }
+        ]
+      }
+    ],
+    "params": [
+      [
+        {
+          "cfg": {
+            "emptyMap": {
+              "kept": "x"
+            },
+            "replaced": {
+              "k": "v"
+            },
+            "sub": {
+              "p": 1,
+              "q": 2
+            },
+            "x": 1,
+            "yy": 2
+          },
+          "f": false,
+          "l": [],
+          "name": "a",
+          "nn": null,
+          "only": "first",
+          "s": "",
+          "second": "only",
+          "z": 0
+        }
+      ]
+    ]
+  },
+  "gt-matrix-empty-first-entry": {
+    "applications": [
+      {
+        "destinationName": "",
+        "destinationNamespace": "default",
+        "destinationServer": "https://kubernetes.default.svc",
+        "name": "app",
+        "namespace": "argocd",
+        "project": "default",
+        "sources": [
+          {
+            "chart": "",
+            "path": "apps",
+            "repoURL": "https://example.invalid/repo.git",
+            "targetRevision": "HEAD"
+          }
+        ]
+      }
+    ],
+    "params": [
+      [
+        {
+          "name": "{{ .env }}"
+        }
+      ]
+    ]
+  },
+  "gt-matrix-list-git-chained": {
+    "applications": [
+      {
+        "destinationName": "",
+        "destinationNamespace": "dev",
+        "destinationServer": "https://kubernetes.default.svc",
+        "name": "dev-api",
+        "namespace": "argocd",
+        "project": "default",
+        "sources": [
+          {
+            "chart": "",
+            "path": "apps/dev/api",
+            "repoURL": "https://example.invalid/repo.git",
+            "targetRevision": "HEAD"
+          }
+        ]
+      },
+      {
+        "destinationName": "",
+        "destinationNamespace": "dev",
+        "destinationServer": "https://kubernetes.default.svc",
+        "name": "dev-web",
+        "namespace": "argocd",
+        "project": "default",
+        "sources": [
+          {
+            "chart": "",
+            "path": "apps/dev/web",
+            "repoURL": "https://example.invalid/repo.git",
+            "targetRevision": "HEAD"
+          }
+        ]
+      },
+      {
+        "destinationName": "",
+        "destinationNamespace": "prod",
+        "destinationServer": "https://kubernetes.default.svc",
+        "name": "prod-web",
+        "namespace": "argocd",
+        "project": "default",
+        "sources": [
+          {
+            "chart": "",
+            "path": "apps/prod/web",
+            "repoURL": "https://example.invalid/repo.git",
+            "targetRevision": "HEAD"
+          }
+        ]
+      }
+    ],
+    "params": [
+      [
+        {
+          "env": "dev",
+          "path": {
+            "basename": "api",
+            "basenameNormalized": "api",
+            "path": "apps/dev/api",
+            "segments": [
+              "apps",
+              "dev",
+              "api"
+            ]
+          }
+        },
+        {
+          "env": "dev",
+          "path": {
+            "basename": "web",
+            "basenameNormalized": "web",
+            "path": "apps/dev/web",
+            "segments": [
+              "apps",
+              "dev",
+              "web"
+            ]
+          }
+        },
+        {
+          "env": "prod",
+          "path": {
+            "basename": "web",
+            "basenameNormalized": "web",
+            "path": "apps/prod/web",
+            "segments": [
+              "apps",
+              "prod",
+              "web"
+            ]
+          }
+        }
+      ]
+    ]
+  },
+  "gt-matrix-second-child-no-value": {
+    "applications": null,
+    "error": "panic: reflect.Value.SetMapIndex: value of type interface {} is not assignable to type string",
+    "paramsError": "panic: reflect.Value.SetMapIndex: value of type interface {} is not assignable to type string"
+  },
+  "gt-matrix-second-child-quoted-scalars": {
+    "applications": [
+      {
+        "destinationName": "",
+        "destinationNamespace": "default",
+        "destinationServer": "https://kubernetes.default.svc",
+        "name": "app-dev-x-1-true",
+        "namespace": "argocd",
+        "project": "default",
+        "sources": [
+          {
+            "chart": "",
+            "path": "apps/dev",
+            "repoURL": "https://example.invalid/repo.git",
+            "targetRevision": "HEAD"
+          }
+        ]
+      }
+    ],
+    "params": [
+      [
+        {
+          "env": "dev",
+          "flag": "true",
+          "name": "dev-x",
+          "suffix": "1"
+        }
+      ]
+    ]
+  },
+  "gt-matrix-second-child-rendered": {
+    "applications": [
+      {
+        "destinationName": "",
+        "destinationNamespace": "default",
+        "destinationServer": "https://kubernetes.default.svc",
+        "name": "components-extra",
+        "namespace": "argocd",
+        "project": "default",
+        "sources": [
+          {
+            "chart": "",
+            "path": "charts/redis",
+            "repoURL": "https://example.invalid/repo.git",
+            "targetRevision": "HEAD"
+          }
+        ]
+      },
+      {
+        "destinationName": "",
+        "destinationNamespace": "default",
+        "destinationServer": "https://kubernetes.default.svc",
+        "name": "guestbook",
+        "namespace": "argocd",
+        "project": "default",
+        "sources": [
+          {
+            "chart": "",
+            "path": "charts/guestbook",
+            "repoURL": "https://example.invalid/repo.git",
+            "targetRevision": "HEAD"
+          }
+        ]
+      },
+      {
+        "destinationName": "",
+        "destinationNamespace": "default",
+        "destinationServer": "https://kubernetes.default.svc",
+        "name": "redis",
+        "namespace": "argocd",
+        "project": "default",
+        "sources": [
+          {
+            "chart": "",
+            "path": "charts/redis",
+            "repoURL": "https://example.invalid/repo.git",
+            "targetRevision": "HEAD"
+          }
+        ]
+      }
+    ],
+    "params": [
+      [
+        {
+          "chart": "guestbook",
+          "components": [
+            {
+              "chart": "guestbook",
+              "name": "guestbook",
+              "version": "1.2.3"
+            },
+            {
+              "chart": "redis",
+              "name": "redis",
+              "version": 17
+            }
+          ],
+          "name": "guestbook",
+          "path": {
+            "basename": ".",
+            "basenameNormalized": "",
+            "filename": "components.yaml",
+            "filenameNormalized": "components.yaml",
+            "path": ".",
+            "segments": [
+              "."
+            ]
+          },
+          "version": "1.2.3"
+        },
+        {
+          "chart": "redis",
+          "components": [
+            {
+              "chart": "guestbook",
+              "name": "guestbook",
+              "version": "1.2.3"
+            },
+            {
+              "chart": "redis",
+              "name": "redis",
+              "version": 17
+            }
+          ],
+          "name": "components-extra",
+          "path": {
+            "basename": ".",
+            "basenameNormalized": "",
+            "filename": "components.yaml",
+            "filenameNormalized": "components.yaml",
+            "path": ".",
+            "segments": [
+              "."
+            ]
+          }
+        },
+        {
+          "chart": "redis",
+          "components": [
+            {
+              "chart": "guestbook",
+              "name": "guestbook",
+              "version": "1.2.3"
+            },
+            {
+              "chart": "redis",
+              "name": "redis",
+              "version": 17
+            }
+          ],
+          "name": "redis",
+          "path": {
+            "basename": ".",
+            "basenameNormalized": "",
+            "filename": "components.yaml",
+            "filenameNormalized": "components.yaml",
+            "path": ".",
+            "segments": [
+              "."
+            ]
+          },
+          "version": 17
+        }
+      ]
+    ]
+  },
+  "gt-matrix-second-child-yaml11-scalar": {
+    "applications": [
+      {
+        "destinationName": "",
+        "destinationNamespace": "default",
+        "destinationServer": "https://kubernetes.default.svc",
+        "name": "app-dev-x-1-true",
+        "namespace": "argocd",
+        "project": "default",
+        "sources": [
+          {
+            "chart": "",
+            "path": "apps/dev",
+            "repoURL": "https://example.invalid/repo.git",
+            "targetRevision": "HEAD"
+          }
+        ]
+      }
+    ],
+    "params": [
+      [
+        {
+          "env": "dev",
+          "flag": true,
+          "name": "dev-x",
+          "suffix": 1
+        }
+      ]
+    ]
+  },
+  "gt-matrix-values-maps": {
+    "applications": null,
+    "error": "panic: reflect.Value.SetMapIndex: value of type interface {} is not assignable to type string",
+    "paramsError": "panic: reflect.Value.SetMapIndex: value of type interface {} is not assignable to type string"
+  },
+  "gt-matrix-values-maps-reversed": {
+    "applications": [
+      {
+        "destinationName": "",
+        "destinationNamespace": "default",
+        "destinationServer": "https://kubernetes.default.svc",
+        "name": "dev-web",
+        "namespace": "argocd",
+        "project": "default",
+        "sources": [
+          {
+            "chart": "",
+            "path": "apps/web",
+            "repoURL": "https://example.invalid/repo.git",
+            "targetRevision": "HEAD"
+          }
+        ]
+      }
+    ],
+    "params": [
+      [
+        {
+          "env": "dev",
+          "path": {
+            "basename": "web",
+            "basenameNormalized": "web",
+            "path": "apps/web",
+            "segments": [
+              "apps",
+              "web"
+            ]
+          },
+          "values": {
+            "name": "web",
+            "owner": "team-a"
+          }
+        }
+      ]
+    ]
+  },
+  "gt-merge-deep": {
+    "applications": [
+      {
+        "destinationName": "",
+        "destinationNamespace": "default",
+        "destinationServer": "https://kubernetes.default.svc",
+        "name": "app-one",
+        "namespace": "argocd",
+        "project": "default",
+        "sources": [
+          {
+            "chart": "",
+            "path": "apps/one",
+            "repoURL": "https://example.invalid/repo.git",
+            "targetRevision": "HEAD"
+          }
+        ]
+      },
+      {
+        "destinationName": "",
+        "destinationNamespace": "default",
+        "destinationServer": "https://kubernetes.default.svc",
+        "name": "app-two",
+        "namespace": "argocd",
+        "project": "default",
+        "sources": [
+          {
+            "chart": "",
+            "path": "apps/two",
+            "repoURL": "https://example.invalid/repo.git",
+            "targetRevision": "HEAD"
+          }
+        ]
+      }
+    ],
+    "params": [
+      [
+        {
+          "cfg": {
+            "a": 1,
+            "b": 2,
+            "sub": {
+              "x": 1,
+              "yy": 2
+            }
+          },
+          "server": "one",
+          "tags": []
+        },
+        {
+          "cfg": {
+            "a": 2
+          },
+          "server": "two"
+        }
+      ]
+    ]
+  },
+  "gt-merge-nested-key": {
+    "applications": [
+      {
+        "destinationName": "",
+        "destinationNamespace": "default",
+        "destinationServer": "https://kubernetes.default.svc",
+        "name": "app-base2",
+        "namespace": "argocd",
+        "project": "default",
+        "sources": [
+          {
+            "chart": "",
+            "path": "apps/base2",
+            "repoURL": "https://example.invalid/repo.git",
+            "targetRevision": "HEAD"
+          }
+        ]
+      },
+      {
+        "destinationName": "",
+        "destinationNamespace": "default",
+        "destinationServer": "https://kubernetes.default.svc",
+        "name": "app-override",
+        "namespace": "argocd",
+        "project": "default",
+        "sources": [
+          {
+            "chart": "",
+            "path": "apps/override",
+            "repoURL": "https://example.invalid/repo.git",
+            "targetRevision": "HEAD"
+          }
+        ]
+      }
+    ],
+    "params": [
+      [
+        {
+          "cfg": {
+            "a": 1
+          },
+          "v": "override"
+        },
+        {
+          "cfg": {
+            "a": 2
+          },
+          "v": "base2"
+        }
+      ]
+    ]
+  },
+  "gt-missingkey-error": {
+    "applications": null,
+    "error": "failed to execute go template apps/{{ .missing }}: template: base:1:8: executing \"base\" at <.missing>: map has no entry for key \"missing\"",
+    "params": [
+      [
+        {
+          "env": "dev"
+        }
+      ]
+    ]
+  },
+  "gt-missingkey-error-satisfied": {
+    "applications": [
+      {
+        "destinationName": "",
+        "destinationNamespace": "default",
+        "destinationServer": "https://kubernetes.default.svc",
+        "name": "app-dev",
+        "namespace": "argocd",
+        "project": "default",
+        "sources": [
+          {
+            "chart": "",
+            "path": "apps/dev",
+            "repoURL": "https://example.invalid/repo.git",
+            "targetRevision": "HEAD"
+          }
+        ]
+      }
+    ],
+    "params": [
+      [
+        {
+          "env": "dev"
+        }
+      ]
+    ]
+  },
+  "gt-raw-values-object-rendered": {
+    "applications": null,
+    "error": "failed to deeply replace JSON field contents: failed to execute go template {{ .env.y }}: template: base:1:7: executing \"base\" at <.env.y>: can't evaluate field y in type interface {}",
+    "params": [
+      [
+        {
+          "env": "dev"
+        }
+      ]
+    ]
+  },
+  "gt-template-function-pipeline": {
+    "applications": [
+      {
+        "destinationName": "",
+        "destinationNamespace": "ns",
+        "destinationServer": "https://prod.invalid",
+        "name": "prod-eu-1-api",
+        "namespace": "argocd",
+        "project": "prod",
+        "sources": [
+          {
+            "chart": "",
+            "path": "apps/prod_eu-1/3",
+            "repoURL": "https://example.invalid/repo.git",
+            "targetRevision": "HEAD"
+          }
+        ]
+      }
+    ],
+    "params": [
+      [
+        {
+          "apps": [
+            "web",
+            "api"
+          ],
+          "cluster": "Prod_EU-1",
+          "replicas": 3,
+          "url": "https://prod.invalid"
+        }
+      ]
+    ]
+  },
+  "gt-template-patch": {
+    "applications": [
+      {
+        "destinationName": "",
+        "destinationNamespace": "default",
+        "destinationServer": "https://kubernetes.default.svc",
+        "name": "app-dev",
+        "namespace": "argocd",
+        "project": "default",
+        "sources": [
+          {
+            "chart": "",
+            "path": "patched/dev",
+            "repoURL": "https://example.invalid/repo.git",
+            "targetRevision": "HEAD"
+          }
+        ]
+      }
+    ],
+    "params": [
+      [
+        {
+          "env": "dev"
+        }
+      ]
+    ]
+  },
+  "gt-unknown-fields-not-rendered": {
+    "applications": [
+      {
+        "destinationName": "",
+        "destinationNamespace": "default",
+        "destinationServer": "https://kubernetes.default.svc",
+        "name": "app-dev",
+        "namespace": "argocd",
+        "project": "default",
+        "sources": [
+          {
+            "chart": "",
+            "path": "apps/dev",
+            "repoURL": "https://example.invalid/repo.git",
+            "targetRevision": "HEAD"
+          }
+        ]
+      }
+    ],
+    "params": [
+      [
+        {
+          "env": "dev"
+        }
+      ]
+    ]
+  },
+  "gt-unknown-generator-field-not-rendered": {
+    "applications": [
+      {
+        "destinationName": "",
+        "destinationNamespace": "default",
+        "destinationServer": "https://kubernetes.default.svc",
+        "name": "dev-web",
+        "namespace": "argocd",
+        "project": "default",
+        "sources": [
+          {
+            "chart": "",
+            "path": "apps/dev/web",
+            "repoURL": "https://example.invalid/repo.git",
+            "targetRevision": "HEAD"
+          }
+        ]
+      }
+    ],
+    "params": [
+      [
+        {
+          "env": "dev",
+          "path": {
+            "basename": "web",
+            "basenameNormalized": "web",
+            "path": "apps/dev/web",
+            "segments": [
+              "apps",
+              "dev",
+              "web"
+            ]
+          }
+        }
+      ]
+    ]
+  },
   "list-basic": {
     "applications": [
       {

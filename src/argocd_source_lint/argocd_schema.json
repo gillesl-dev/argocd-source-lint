@@ -1,0 +1,1461 @@
+{
+  "definitions": {
+    "github.com/argoproj/argo-cd/v3/pkg/apis/application/v1alpha1.ApplicationDestination": {
+      "fields": {
+        "name": {
+          "kind": "string"
+        },
+        "namespace": {
+          "kind": "string"
+        },
+        "server": {
+          "kind": "string"
+        }
+      },
+      "kind": "struct"
+    },
+    "github.com/argoproj/argo-cd/v3/pkg/apis/application/v1alpha1.ApplicationSetGenerator": {
+      "fields": {
+        "clusterDecisionResource": {
+          "ref": "github.com/argoproj/argo-cd/v3/pkg/apis/application/v1alpha1.DuckTypeGenerator"
+        },
+        "clusters": {
+          "ref": "github.com/argoproj/argo-cd/v3/pkg/apis/application/v1alpha1.ClusterGenerator"
+        },
+        "git": {
+          "ref": "github.com/argoproj/argo-cd/v3/pkg/apis/application/v1alpha1.GitGenerator"
+        },
+        "list": {
+          "ref": "github.com/argoproj/argo-cd/v3/pkg/apis/application/v1alpha1.ListGenerator"
+        },
+        "matrix": {
+          "ref": "github.com/argoproj/argo-cd/v3/pkg/apis/application/v1alpha1.MatrixGenerator"
+        },
+        "merge": {
+          "ref": "github.com/argoproj/argo-cd/v3/pkg/apis/application/v1alpha1.MergeGenerator"
+        },
+        "plugin": {
+          "ref": "github.com/argoproj/argo-cd/v3/pkg/apis/application/v1alpha1.PluginGenerator"
+        },
+        "pullRequest": {
+          "ref": "github.com/argoproj/argo-cd/v3/pkg/apis/application/v1alpha1.PullRequestGenerator"
+        },
+        "scmProvider": {
+          "ref": "github.com/argoproj/argo-cd/v3/pkg/apis/application/v1alpha1.SCMProviderGenerator"
+        },
+        "selector": {
+          "ref": "k8s.io/apimachinery/pkg/apis/meta/v1.LabelSelector"
+        }
+      },
+      "kind": "struct"
+    },
+    "github.com/argoproj/argo-cd/v3/pkg/apis/application/v1alpha1.ApplicationSetNestedGenerator": {
+      "fields": {
+        "clusterDecisionResource": {
+          "ref": "github.com/argoproj/argo-cd/v3/pkg/apis/application/v1alpha1.DuckTypeGenerator"
+        },
+        "clusters": {
+          "ref": "github.com/argoproj/argo-cd/v3/pkg/apis/application/v1alpha1.ClusterGenerator"
+        },
+        "git": {
+          "ref": "github.com/argoproj/argo-cd/v3/pkg/apis/application/v1alpha1.GitGenerator"
+        },
+        "list": {
+          "ref": "github.com/argoproj/argo-cd/v3/pkg/apis/application/v1alpha1.ListGenerator"
+        },
+        "matrix": {
+          "kind": "raw"
+        },
+        "merge": {
+          "kind": "raw"
+        },
+        "plugin": {
+          "ref": "github.com/argoproj/argo-cd/v3/pkg/apis/application/v1alpha1.PluginGenerator"
+        },
+        "pullRequest": {
+          "ref": "github.com/argoproj/argo-cd/v3/pkg/apis/application/v1alpha1.PullRequestGenerator"
+        },
+        "scmProvider": {
+          "ref": "github.com/argoproj/argo-cd/v3/pkg/apis/application/v1alpha1.SCMProviderGenerator"
+        },
+        "selector": {
+          "ref": "k8s.io/apimachinery/pkg/apis/meta/v1.LabelSelector"
+        }
+      },
+      "kind": "struct"
+    },
+    "github.com/argoproj/argo-cd/v3/pkg/apis/application/v1alpha1.ApplicationSetTemplate": {
+      "fields": {
+        "metadata": {
+          "ref": "github.com/argoproj/argo-cd/v3/pkg/apis/application/v1alpha1.ApplicationSetTemplateMeta"
+        },
+        "spec": {
+          "ref": "github.com/argoproj/argo-cd/v3/pkg/apis/application/v1alpha1.ApplicationSpec"
+        }
+      },
+      "kind": "struct"
+    },
+    "github.com/argoproj/argo-cd/v3/pkg/apis/application/v1alpha1.ApplicationSetTemplateMeta": {
+      "fields": {
+        "annotations": {
+          "kind": "map",
+          "value": {
+            "kind": "string"
+          }
+        },
+        "finalizers": {
+          "item": {
+            "kind": "string"
+          },
+          "kind": "list"
+        },
+        "labels": {
+          "kind": "map",
+          "value": {
+            "kind": "string"
+          }
+        },
+        "name": {
+          "kind": "string"
+        },
+        "namespace": {
+          "kind": "string"
+        }
+      },
+      "kind": "struct"
+    },
+    "github.com/argoproj/argo-cd/v3/pkg/apis/application/v1alpha1.ApplicationSource": {
+      "fields": {
+        "chart": {
+          "kind": "string"
+        },
+        "directory": {
+          "ref": "github.com/argoproj/argo-cd/v3/pkg/apis/application/v1alpha1.ApplicationSourceDirectory"
+        },
+        "helm": {
+          "ref": "github.com/argoproj/argo-cd/v3/pkg/apis/application/v1alpha1.ApplicationSourceHelm"
+        },
+        "kustomize": {
+          "ref": "github.com/argoproj/argo-cd/v3/pkg/apis/application/v1alpha1.ApplicationSourceKustomize"
+        },
+        "name": {
+          "kind": "string"
+        },
+        "path": {
+          "kind": "string"
+        },
+        "plugin": {
+          "ref": "github.com/argoproj/argo-cd/v3/pkg/apis/application/v1alpha1.ApplicationSourcePlugin"
+        },
+        "ref": {
+          "kind": "string"
+        },
+        "repoURL": {
+          "kind": "string"
+        },
+        "targetRevision": {
+          "kind": "string"
+        }
+      },
+      "kind": "struct"
+    },
+    "github.com/argoproj/argo-cd/v3/pkg/apis/application/v1alpha1.ApplicationSourceDirectory": {
+      "fields": {
+        "exclude": {
+          "kind": "string"
+        },
+        "include": {
+          "kind": "string"
+        },
+        "jsonnet": {
+          "ref": "github.com/argoproj/argo-cd/v3/pkg/apis/application/v1alpha1.ApplicationSourceJsonnet"
+        },
+        "recurse": {
+          "kind": "other"
+        }
+      },
+      "kind": "struct"
+    },
+    "github.com/argoproj/argo-cd/v3/pkg/apis/application/v1alpha1.ApplicationSourceHelm": {
+      "fields": {
+        "apiVersions": {
+          "item": {
+            "kind": "string"
+          },
+          "kind": "list"
+        },
+        "fileParameters": {
+          "item": {
+            "ref": "github.com/argoproj/argo-cd/v3/pkg/apis/application/v1alpha1.HelmFileParameter"
+          },
+          "kind": "list"
+        },
+        "ignoreMissingValueFiles": {
+          "kind": "other"
+        },
+        "kubeVersion": {
+          "kind": "string"
+        },
+        "namespace": {
+          "kind": "string"
+        },
+        "parameters": {
+          "item": {
+            "ref": "github.com/argoproj/argo-cd/v3/pkg/apis/application/v1alpha1.HelmParameter"
+          },
+          "kind": "list"
+        },
+        "passCredentials": {
+          "kind": "other"
+        },
+        "releaseName": {
+          "kind": "string"
+        },
+        "skipCrds": {
+          "kind": "other"
+        },
+        "skipSchemaValidation": {
+          "kind": "other"
+        },
+        "skipTests": {
+          "kind": "other"
+        },
+        "valueFiles": {
+          "item": {
+            "kind": "string"
+          },
+          "kind": "list"
+        },
+        "values": {
+          "kind": "string"
+        },
+        "valuesObject": {
+          "kind": "raw"
+        },
+        "version": {
+          "kind": "string"
+        }
+      },
+      "kind": "struct"
+    },
+    "github.com/argoproj/argo-cd/v3/pkg/apis/application/v1alpha1.ApplicationSourceJsonnet": {
+      "fields": {
+        "extVars": {
+          "item": {
+            "ref": "github.com/argoproj/argo-cd/v3/pkg/apis/application/v1alpha1.JsonnetVar"
+          },
+          "kind": "list"
+        },
+        "libs": {
+          "item": {
+            "kind": "string"
+          },
+          "kind": "list"
+        },
+        "tlas": {
+          "item": {
+            "ref": "github.com/argoproj/argo-cd/v3/pkg/apis/application/v1alpha1.JsonnetVar"
+          },
+          "kind": "list"
+        }
+      },
+      "kind": "struct"
+    },
+    "github.com/argoproj/argo-cd/v3/pkg/apis/application/v1alpha1.ApplicationSourceKustomize": {
+      "fields": {
+        "apiVersions": {
+          "item": {
+            "kind": "string"
+          },
+          "kind": "list"
+        },
+        "commonAnnotations": {
+          "kind": "map",
+          "value": {
+            "kind": "string"
+          }
+        },
+        "commonAnnotationsEnvsubst": {
+          "kind": "other"
+        },
+        "commonLabels": {
+          "kind": "map",
+          "value": {
+            "kind": "string"
+          }
+        },
+        "components": {
+          "item": {
+            "kind": "string"
+          },
+          "kind": "list"
+        },
+        "forceCommonAnnotations": {
+          "kind": "other"
+        },
+        "forceCommonLabels": {
+          "kind": "other"
+        },
+        "ignoreMissingComponents": {
+          "kind": "other"
+        },
+        "images": {
+          "item": {
+            "kind": "string"
+          },
+          "kind": "list"
+        },
+        "kubeVersion": {
+          "kind": "string"
+        },
+        "labelIncludeTemplates": {
+          "kind": "other"
+        },
+        "labelWithoutSelector": {
+          "kind": "other"
+        },
+        "namePrefix": {
+          "kind": "string"
+        },
+        "nameSuffix": {
+          "kind": "string"
+        },
+        "namespace": {
+          "kind": "string"
+        },
+        "patches": {
+          "item": {
+            "ref": "github.com/argoproj/argo-cd/v3/pkg/apis/application/v1alpha1.KustomizePatch"
+          },
+          "kind": "list"
+        },
+        "replicas": {
+          "item": {
+            "ref": "github.com/argoproj/argo-cd/v3/pkg/apis/application/v1alpha1.KustomizeReplica"
+          },
+          "kind": "list"
+        },
+        "version": {
+          "kind": "string"
+        }
+      },
+      "kind": "struct"
+    },
+    "github.com/argoproj/argo-cd/v3/pkg/apis/application/v1alpha1.ApplicationSourcePlugin": {
+      "fields": {
+        "env": {
+          "item": {
+            "ref": "github.com/argoproj/argo-cd/v3/pkg/apis/application/v1alpha1.EnvEntry"
+          },
+          "kind": "list"
+        },
+        "name": {
+          "kind": "string"
+        },
+        "parameters": {
+          "item": {
+            "ref": "github.com/argoproj/argo-cd/v3/pkg/apis/application/v1alpha1.ApplicationSourcePluginParameter"
+          },
+          "kind": "list"
+        }
+      },
+      "kind": "struct"
+    },
+    "github.com/argoproj/argo-cd/v3/pkg/apis/application/v1alpha1.ApplicationSourcePluginParameter": {
+      "fields": {
+        "array": {
+          "item": {
+            "kind": "string"
+          },
+          "kind": "list"
+        },
+        "map": {
+          "kind": "map",
+          "value": {
+            "kind": "string"
+          }
+        },
+        "name": {
+          "kind": "string"
+        },
+        "string": {
+          "kind": "string"
+        }
+      },
+      "kind": "struct"
+    },
+    "github.com/argoproj/argo-cd/v3/pkg/apis/application/v1alpha1.ApplicationSpec": {
+      "fields": {
+        "destination": {
+          "ref": "github.com/argoproj/argo-cd/v3/pkg/apis/application/v1alpha1.ApplicationDestination"
+        },
+        "ignoreDifferences": {
+          "item": {
+            "ref": "github.com/argoproj/argo-cd/v3/pkg/apis/application/v1alpha1.ResourceIgnoreDifferences"
+          },
+          "kind": "list"
+        },
+        "info": {
+          "item": {
+            "ref": "github.com/argoproj/argo-cd/v3/pkg/apis/application/v1alpha1.Info"
+          },
+          "kind": "list"
+        },
+        "project": {
+          "kind": "string"
+        },
+        "revisionHistoryLimit": {
+          "kind": "other"
+        },
+        "source": {
+          "ref": "github.com/argoproj/argo-cd/v3/pkg/apis/application/v1alpha1.ApplicationSource"
+        },
+        "sourceHydrator": {
+          "ref": "github.com/argoproj/argo-cd/v3/pkg/apis/application/v1alpha1.SourceHydrator"
+        },
+        "sources": {
+          "item": {
+            "ref": "github.com/argoproj/argo-cd/v3/pkg/apis/application/v1alpha1.ApplicationSource"
+          },
+          "kind": "list"
+        },
+        "syncPolicy": {
+          "ref": "github.com/argoproj/argo-cd/v3/pkg/apis/application/v1alpha1.SyncPolicy"
+        }
+      },
+      "kind": "struct"
+    },
+    "github.com/argoproj/argo-cd/v3/pkg/apis/application/v1alpha1.Backoff": {
+      "fields": {
+        "duration": {
+          "kind": "string"
+        },
+        "factor": {
+          "kind": "other"
+        },
+        "maxDuration": {
+          "kind": "string"
+        }
+      },
+      "kind": "struct"
+    },
+    "github.com/argoproj/argo-cd/v3/pkg/apis/application/v1alpha1.BasicAuthBitbucketServer": {
+      "fields": {
+        "passwordRef": {
+          "ref": "github.com/argoproj/argo-cd/v3/pkg/apis/application/v1alpha1.SecretRef"
+        },
+        "username": {
+          "kind": "string"
+        }
+      },
+      "kind": "struct"
+    },
+    "github.com/argoproj/argo-cd/v3/pkg/apis/application/v1alpha1.BearerTokenBitbucket": {
+      "fields": {
+        "tokenRef": {
+          "ref": "github.com/argoproj/argo-cd/v3/pkg/apis/application/v1alpha1.SecretRef"
+        }
+      },
+      "kind": "struct"
+    },
+    "github.com/argoproj/argo-cd/v3/pkg/apis/application/v1alpha1.BearerTokenBitbucketCloud": {
+      "fields": {
+        "tokenRef": {
+          "ref": "github.com/argoproj/argo-cd/v3/pkg/apis/application/v1alpha1.SecretRef"
+        }
+      },
+      "kind": "struct"
+    },
+    "github.com/argoproj/argo-cd/v3/pkg/apis/application/v1alpha1.ClusterGenerator": {
+      "fields": {
+        "flatList": {
+          "kind": "other"
+        },
+        "selector": {
+          "ref": "k8s.io/apimachinery/pkg/apis/meta/v1.LabelSelector"
+        },
+        "template": {
+          "ref": "github.com/argoproj/argo-cd/v3/pkg/apis/application/v1alpha1.ApplicationSetTemplate"
+        },
+        "values": {
+          "kind": "map",
+          "value": {
+            "kind": "string"
+          }
+        }
+      },
+      "kind": "struct"
+    },
+    "github.com/argoproj/argo-cd/v3/pkg/apis/application/v1alpha1.ConfigMapKeyRef": {
+      "fields": {
+        "configMapName": {
+          "kind": "string"
+        },
+        "key": {
+          "kind": "string"
+        }
+      },
+      "kind": "struct"
+    },
+    "github.com/argoproj/argo-cd/v3/pkg/apis/application/v1alpha1.DrySource": {
+      "fields": {
+        "directory": {
+          "ref": "github.com/argoproj/argo-cd/v3/pkg/apis/application/v1alpha1.ApplicationSourceDirectory"
+        },
+        "helm": {
+          "ref": "github.com/argoproj/argo-cd/v3/pkg/apis/application/v1alpha1.ApplicationSourceHelm"
+        },
+        "kustomize": {
+          "ref": "github.com/argoproj/argo-cd/v3/pkg/apis/application/v1alpha1.ApplicationSourceKustomize"
+        },
+        "path": {
+          "kind": "string"
+        },
+        "plugin": {
+          "ref": "github.com/argoproj/argo-cd/v3/pkg/apis/application/v1alpha1.ApplicationSourcePlugin"
+        },
+        "repoURL": {
+          "kind": "string"
+        },
+        "targetRevision": {
+          "kind": "string"
+        }
+      },
+      "kind": "struct"
+    },
+    "github.com/argoproj/argo-cd/v3/pkg/apis/application/v1alpha1.DuckTypeGenerator": {
+      "fields": {
+        "configMapRef": {
+          "kind": "string"
+        },
+        "labelSelector": {
+          "ref": "k8s.io/apimachinery/pkg/apis/meta/v1.LabelSelector"
+        },
+        "name": {
+          "kind": "string"
+        },
+        "requeueAfterSeconds": {
+          "kind": "other"
+        },
+        "template": {
+          "ref": "github.com/argoproj/argo-cd/v3/pkg/apis/application/v1alpha1.ApplicationSetTemplate"
+        },
+        "values": {
+          "kind": "map",
+          "value": {
+            "kind": "string"
+          }
+        }
+      },
+      "kind": "struct"
+    },
+    "github.com/argoproj/argo-cd/v3/pkg/apis/application/v1alpha1.EnvEntry": {
+      "fields": {
+        "name": {
+          "kind": "string"
+        },
+        "value": {
+          "kind": "string"
+        }
+      },
+      "kind": "struct"
+    },
+    "github.com/argoproj/argo-cd/v3/pkg/apis/application/v1alpha1.GitDirectoryGeneratorItem": {
+      "fields": {
+        "exclude": {
+          "kind": "other"
+        },
+        "path": {
+          "kind": "string"
+        }
+      },
+      "kind": "struct"
+    },
+    "github.com/argoproj/argo-cd/v3/pkg/apis/application/v1alpha1.GitFileGeneratorItem": {
+      "fields": {
+        "exclude": {
+          "kind": "other"
+        },
+        "path": {
+          "kind": "string"
+        }
+      },
+      "kind": "struct"
+    },
+    "github.com/argoproj/argo-cd/v3/pkg/apis/application/v1alpha1.GitGenerator": {
+      "fields": {
+        "directories": {
+          "item": {
+            "ref": "github.com/argoproj/argo-cd/v3/pkg/apis/application/v1alpha1.GitDirectoryGeneratorItem"
+          },
+          "kind": "list"
+        },
+        "files": {
+          "item": {
+            "ref": "github.com/argoproj/argo-cd/v3/pkg/apis/application/v1alpha1.GitFileGeneratorItem"
+          },
+          "kind": "list"
+        },
+        "pathParamPrefix": {
+          "kind": "string"
+        },
+        "repoURL": {
+          "kind": "string"
+        },
+        "requeueAfterSeconds": {
+          "kind": "other"
+        },
+        "revision": {
+          "kind": "string"
+        },
+        "template": {
+          "ref": "github.com/argoproj/argo-cd/v3/pkg/apis/application/v1alpha1.ApplicationSetTemplate"
+        },
+        "values": {
+          "kind": "map",
+          "value": {
+            "kind": "string"
+          }
+        }
+      },
+      "kind": "struct"
+    },
+    "github.com/argoproj/argo-cd/v3/pkg/apis/application/v1alpha1.HelmFileParameter": {
+      "fields": {
+        "name": {
+          "kind": "string"
+        },
+        "path": {
+          "kind": "string"
+        }
+      },
+      "kind": "struct"
+    },
+    "github.com/argoproj/argo-cd/v3/pkg/apis/application/v1alpha1.HelmParameter": {
+      "fields": {
+        "forceString": {
+          "kind": "other"
+        },
+        "name": {
+          "kind": "string"
+        },
+        "value": {
+          "kind": "string"
+        }
+      },
+      "kind": "struct"
+    },
+    "github.com/argoproj/argo-cd/v3/pkg/apis/application/v1alpha1.HydrateTo": {
+      "fields": {
+        "targetBranch": {
+          "kind": "string"
+        }
+      },
+      "kind": "struct"
+    },
+    "github.com/argoproj/argo-cd/v3/pkg/apis/application/v1alpha1.Info": {
+      "fields": {
+        "name": {
+          "kind": "string"
+        },
+        "value": {
+          "kind": "string"
+        }
+      },
+      "kind": "struct"
+    },
+    "github.com/argoproj/argo-cd/v3/pkg/apis/application/v1alpha1.JsonnetVar": {
+      "fields": {
+        "code": {
+          "kind": "other"
+        },
+        "name": {
+          "kind": "string"
+        },
+        "value": {
+          "kind": "string"
+        }
+      },
+      "kind": "struct"
+    },
+    "github.com/argoproj/argo-cd/v3/pkg/apis/application/v1alpha1.KustomizePatch": {
+      "fields": {
+        "options": {
+          "kind": "map",
+          "value": {
+            "kind": "other"
+          }
+        },
+        "patch": {
+          "kind": "string"
+        },
+        "path": {
+          "kind": "string"
+        },
+        "target": {
+          "ref": "github.com/argoproj/argo-cd/v3/pkg/apis/application/v1alpha1.KustomizeSelector"
+        }
+      },
+      "kind": "struct"
+    },
+    "github.com/argoproj/argo-cd/v3/pkg/apis/application/v1alpha1.KustomizeReplica": {
+      "fields": {
+        "count": {
+          "kind": "string"
+        },
+        "name": {
+          "kind": "string"
+        }
+      },
+      "kind": "struct"
+    },
+    "github.com/argoproj/argo-cd/v3/pkg/apis/application/v1alpha1.KustomizeSelector": {
+      "fields": {
+        "annotationSelector": {
+          "kind": "string"
+        },
+        "group": {
+          "kind": "string"
+        },
+        "kind": {
+          "kind": "string"
+        },
+        "labelSelector": {
+          "kind": "string"
+        },
+        "name": {
+          "kind": "string"
+        },
+        "namespace": {
+          "kind": "string"
+        },
+        "version": {
+          "kind": "string"
+        }
+      },
+      "kind": "struct"
+    },
+    "github.com/argoproj/argo-cd/v3/pkg/apis/application/v1alpha1.ListGenerator": {
+      "fields": {
+        "elements": {
+          "item": {
+            "kind": "raw"
+          },
+          "kind": "list"
+        },
+        "elementsYaml": {
+          "kind": "string"
+        },
+        "template": {
+          "ref": "github.com/argoproj/argo-cd/v3/pkg/apis/application/v1alpha1.ApplicationSetTemplate"
+        }
+      },
+      "kind": "struct"
+    },
+    "github.com/argoproj/argo-cd/v3/pkg/apis/application/v1alpha1.ManagedNamespaceMetadata": {
+      "fields": {
+        "annotations": {
+          "kind": "map",
+          "value": {
+            "kind": "string"
+          }
+        },
+        "labels": {
+          "kind": "map",
+          "value": {
+            "kind": "string"
+          }
+        }
+      },
+      "kind": "struct"
+    },
+    "github.com/argoproj/argo-cd/v3/pkg/apis/application/v1alpha1.MatrixGenerator": {
+      "fields": {
+        "generators": {
+          "item": {
+            "ref": "github.com/argoproj/argo-cd/v3/pkg/apis/application/v1alpha1.ApplicationSetNestedGenerator"
+          },
+          "kind": "list"
+        },
+        "template": {
+          "ref": "github.com/argoproj/argo-cd/v3/pkg/apis/application/v1alpha1.ApplicationSetTemplate"
+        }
+      },
+      "kind": "struct"
+    },
+    "github.com/argoproj/argo-cd/v3/pkg/apis/application/v1alpha1.MergeGenerator": {
+      "fields": {
+        "generators": {
+          "item": {
+            "ref": "github.com/argoproj/argo-cd/v3/pkg/apis/application/v1alpha1.ApplicationSetNestedGenerator"
+          },
+          "kind": "list"
+        },
+        "mergeKeys": {
+          "item": {
+            "kind": "string"
+          },
+          "kind": "list"
+        },
+        "template": {
+          "ref": "github.com/argoproj/argo-cd/v3/pkg/apis/application/v1alpha1.ApplicationSetTemplate"
+        }
+      },
+      "kind": "struct"
+    },
+    "github.com/argoproj/argo-cd/v3/pkg/apis/application/v1alpha1.PluginConfigMapRef": {
+      "fields": {
+        "name": {
+          "kind": "string"
+        }
+      },
+      "kind": "struct"
+    },
+    "github.com/argoproj/argo-cd/v3/pkg/apis/application/v1alpha1.PluginGenerator": {
+      "fields": {
+        "configMapRef": {
+          "ref": "github.com/argoproj/argo-cd/v3/pkg/apis/application/v1alpha1.PluginConfigMapRef"
+        },
+        "input": {
+          "ref": "github.com/argoproj/argo-cd/v3/pkg/apis/application/v1alpha1.PluginInput"
+        },
+        "requeueAfterSeconds": {
+          "kind": "other"
+        },
+        "template": {
+          "ref": "github.com/argoproj/argo-cd/v3/pkg/apis/application/v1alpha1.ApplicationSetTemplate"
+        },
+        "values": {
+          "kind": "map",
+          "value": {
+            "kind": "string"
+          }
+        }
+      },
+      "kind": "struct"
+    },
+    "github.com/argoproj/argo-cd/v3/pkg/apis/application/v1alpha1.PluginInput": {
+      "fields": {
+        "parameters": {
+          "kind": "map",
+          "value": {
+            "kind": "raw"
+          }
+        }
+      },
+      "kind": "struct"
+    },
+    "github.com/argoproj/argo-cd/v3/pkg/apis/application/v1alpha1.PullRequestGenerator": {
+      "fields": {
+        "azuredevops": {
+          "ref": "github.com/argoproj/argo-cd/v3/pkg/apis/application/v1alpha1.PullRequestGeneratorAzureDevOps"
+        },
+        "bitbucket": {
+          "ref": "github.com/argoproj/argo-cd/v3/pkg/apis/application/v1alpha1.PullRequestGeneratorBitbucket"
+        },
+        "bitbucketServer": {
+          "ref": "github.com/argoproj/argo-cd/v3/pkg/apis/application/v1alpha1.PullRequestGeneratorBitbucketServer"
+        },
+        "continueOnRepoNotFoundError": {
+          "kind": "other"
+        },
+        "filters": {
+          "item": {
+            "ref": "github.com/argoproj/argo-cd/v3/pkg/apis/application/v1alpha1.PullRequestGeneratorFilter"
+          },
+          "kind": "list"
+        },
+        "gitea": {
+          "ref": "github.com/argoproj/argo-cd/v3/pkg/apis/application/v1alpha1.PullRequestGeneratorGitea"
+        },
+        "github": {
+          "ref": "github.com/argoproj/argo-cd/v3/pkg/apis/application/v1alpha1.PullRequestGeneratorGithub"
+        },
+        "gitlab": {
+          "ref": "github.com/argoproj/argo-cd/v3/pkg/apis/application/v1alpha1.PullRequestGeneratorGitLab"
+        },
+        "requeueAfterSeconds": {
+          "kind": "other"
+        },
+        "template": {
+          "ref": "github.com/argoproj/argo-cd/v3/pkg/apis/application/v1alpha1.ApplicationSetTemplate"
+        },
+        "values": {
+          "kind": "map",
+          "value": {
+            "kind": "string"
+          }
+        }
+      },
+      "kind": "struct"
+    },
+    "github.com/argoproj/argo-cd/v3/pkg/apis/application/v1alpha1.PullRequestGeneratorAzureDevOps": {
+      "fields": {
+        "api": {
+          "kind": "string"
+        },
+        "labels": {
+          "item": {
+            "kind": "string"
+          },
+          "kind": "list"
+        },
+        "organization": {
+          "kind": "string"
+        },
+        "project": {
+          "kind": "string"
+        },
+        "repo": {
+          "kind": "string"
+        },
+        "tokenRef": {
+          "ref": "github.com/argoproj/argo-cd/v3/pkg/apis/application/v1alpha1.SecretRef"
+        }
+      },
+      "kind": "struct"
+    },
+    "github.com/argoproj/argo-cd/v3/pkg/apis/application/v1alpha1.PullRequestGeneratorBitbucket": {
+      "fields": {
+        "api": {
+          "kind": "string"
+        },
+        "basicAuth": {
+          "ref": "github.com/argoproj/argo-cd/v3/pkg/apis/application/v1alpha1.BasicAuthBitbucketServer"
+        },
+        "bearerToken": {
+          "ref": "github.com/argoproj/argo-cd/v3/pkg/apis/application/v1alpha1.BearerTokenBitbucketCloud"
+        },
+        "owner": {
+          "kind": "string"
+        },
+        "repo": {
+          "kind": "string"
+        }
+      },
+      "kind": "struct"
+    },
+    "github.com/argoproj/argo-cd/v3/pkg/apis/application/v1alpha1.PullRequestGeneratorBitbucketServer": {
+      "fields": {
+        "api": {
+          "kind": "string"
+        },
+        "basicAuth": {
+          "ref": "github.com/argoproj/argo-cd/v3/pkg/apis/application/v1alpha1.BasicAuthBitbucketServer"
+        },
+        "bearerToken": {
+          "ref": "github.com/argoproj/argo-cd/v3/pkg/apis/application/v1alpha1.BearerTokenBitbucket"
+        },
+        "caRef": {
+          "ref": "github.com/argoproj/argo-cd/v3/pkg/apis/application/v1alpha1.ConfigMapKeyRef"
+        },
+        "insecure": {
+          "kind": "other"
+        },
+        "project": {
+          "kind": "string"
+        },
+        "repo": {
+          "kind": "string"
+        }
+      },
+      "kind": "struct"
+    },
+    "github.com/argoproj/argo-cd/v3/pkg/apis/application/v1alpha1.PullRequestGeneratorFilter": {
+      "fields": {
+        "branchMatch": {
+          "kind": "string"
+        },
+        "targetBranchMatch": {
+          "kind": "string"
+        },
+        "titleMatch": {
+          "kind": "string"
+        }
+      },
+      "kind": "struct"
+    },
+    "github.com/argoproj/argo-cd/v3/pkg/apis/application/v1alpha1.PullRequestGeneratorGitLab": {
+      "fields": {
+        "api": {
+          "kind": "string"
+        },
+        "caRef": {
+          "ref": "github.com/argoproj/argo-cd/v3/pkg/apis/application/v1alpha1.ConfigMapKeyRef"
+        },
+        "insecure": {
+          "kind": "other"
+        },
+        "labels": {
+          "item": {
+            "kind": "string"
+          },
+          "kind": "list"
+        },
+        "project": {
+          "kind": "string"
+        },
+        "pullRequestState": {
+          "kind": "string"
+        },
+        "tokenRef": {
+          "ref": "github.com/argoproj/argo-cd/v3/pkg/apis/application/v1alpha1.SecretRef"
+        }
+      },
+      "kind": "struct"
+    },
+    "github.com/argoproj/argo-cd/v3/pkg/apis/application/v1alpha1.PullRequestGeneratorGitea": {
+      "fields": {
+        "api": {
+          "kind": "string"
+        },
+        "insecure": {
+          "kind": "other"
+        },
+        "labels": {
+          "item": {
+            "kind": "string"
+          },
+          "kind": "list"
+        },
+        "owner": {
+          "kind": "string"
+        },
+        "repo": {
+          "kind": "string"
+        },
+        "tokenRef": {
+          "ref": "github.com/argoproj/argo-cd/v3/pkg/apis/application/v1alpha1.SecretRef"
+        }
+      },
+      "kind": "struct"
+    },
+    "github.com/argoproj/argo-cd/v3/pkg/apis/application/v1alpha1.PullRequestGeneratorGithub": {
+      "fields": {
+        "api": {
+          "kind": "string"
+        },
+        "appSecretName": {
+          "kind": "string"
+        },
+        "labels": {
+          "item": {
+            "kind": "string"
+          },
+          "kind": "list"
+        },
+        "owner": {
+          "kind": "string"
+        },
+        "repo": {
+          "kind": "string"
+        },
+        "tokenRef": {
+          "ref": "github.com/argoproj/argo-cd/v3/pkg/apis/application/v1alpha1.SecretRef"
+        }
+      },
+      "kind": "struct"
+    },
+    "github.com/argoproj/argo-cd/v3/pkg/apis/application/v1alpha1.ResourceIgnoreDifferences": {
+      "fields": {
+        "group": {
+          "kind": "string"
+        },
+        "jqPathExpressions": {
+          "item": {
+            "kind": "string"
+          },
+          "kind": "list"
+        },
+        "jsonPointers": {
+          "item": {
+            "kind": "string"
+          },
+          "kind": "list"
+        },
+        "kind": {
+          "kind": "string"
+        },
+        "managedFieldsManagers": {
+          "item": {
+            "kind": "string"
+          },
+          "kind": "list"
+        },
+        "name": {
+          "kind": "string"
+        },
+        "namespace": {
+          "kind": "string"
+        }
+      },
+      "kind": "struct"
+    },
+    "github.com/argoproj/argo-cd/v3/pkg/apis/application/v1alpha1.RetryStrategy": {
+      "fields": {
+        "backoff": {
+          "ref": "github.com/argoproj/argo-cd/v3/pkg/apis/application/v1alpha1.Backoff"
+        },
+        "limit": {
+          "kind": "other"
+        },
+        "refresh": {
+          "kind": "other"
+        }
+      },
+      "kind": "struct"
+    },
+    "github.com/argoproj/argo-cd/v3/pkg/apis/application/v1alpha1.SCMProviderGenerator": {
+      "fields": {
+        "awsCodeCommit": {
+          "ref": "github.com/argoproj/argo-cd/v3/pkg/apis/application/v1alpha1.SCMProviderGeneratorAWSCodeCommit"
+        },
+        "azureDevOps": {
+          "ref": "github.com/argoproj/argo-cd/v3/pkg/apis/application/v1alpha1.SCMProviderGeneratorAzureDevOps"
+        },
+        "bitbucket": {
+          "ref": "github.com/argoproj/argo-cd/v3/pkg/apis/application/v1alpha1.SCMProviderGeneratorBitbucket"
+        },
+        "bitbucketServer": {
+          "ref": "github.com/argoproj/argo-cd/v3/pkg/apis/application/v1alpha1.SCMProviderGeneratorBitbucketServer"
+        },
+        "cloneProtocol": {
+          "kind": "string"
+        },
+        "filters": {
+          "item": {
+            "ref": "github.com/argoproj/argo-cd/v3/pkg/apis/application/v1alpha1.SCMProviderGeneratorFilter"
+          },
+          "kind": "list"
+        },
+        "gitea": {
+          "ref": "github.com/argoproj/argo-cd/v3/pkg/apis/application/v1alpha1.SCMProviderGeneratorGitea"
+        },
+        "github": {
+          "ref": "github.com/argoproj/argo-cd/v3/pkg/apis/application/v1alpha1.SCMProviderGeneratorGithub"
+        },
+        "gitlab": {
+          "ref": "github.com/argoproj/argo-cd/v3/pkg/apis/application/v1alpha1.SCMProviderGeneratorGitlab"
+        },
+        "requeueAfterSeconds": {
+          "kind": "other"
+        },
+        "template": {
+          "ref": "github.com/argoproj/argo-cd/v3/pkg/apis/application/v1alpha1.ApplicationSetTemplate"
+        },
+        "values": {
+          "kind": "map",
+          "value": {
+            "kind": "string"
+          }
+        }
+      },
+      "kind": "struct"
+    },
+    "github.com/argoproj/argo-cd/v3/pkg/apis/application/v1alpha1.SCMProviderGeneratorAWSCodeCommit": {
+      "fields": {
+        "allBranches": {
+          "kind": "other"
+        },
+        "region": {
+          "kind": "string"
+        },
+        "role": {
+          "kind": "string"
+        },
+        "tagFilters": {
+          "item": {
+            "ref": "github.com/argoproj/argo-cd/v3/pkg/apis/application/v1alpha1.TagFilter"
+          },
+          "kind": "list"
+        }
+      },
+      "kind": "struct"
+    },
+    "github.com/argoproj/argo-cd/v3/pkg/apis/application/v1alpha1.SCMProviderGeneratorAzureDevOps": {
+      "fields": {
+        "accessTokenRef": {
+          "ref": "github.com/argoproj/argo-cd/v3/pkg/apis/application/v1alpha1.SecretRef"
+        },
+        "allBranches": {
+          "kind": "other"
+        },
+        "api": {
+          "kind": "string"
+        },
+        "organization": {
+          "kind": "string"
+        },
+        "teamProject": {
+          "kind": "string"
+        }
+      },
+      "kind": "struct"
+    },
+    "github.com/argoproj/argo-cd/v3/pkg/apis/application/v1alpha1.SCMProviderGeneratorBitbucket": {
+      "fields": {
+        "allBranches": {
+          "kind": "other"
+        },
+        "appPasswordRef": {
+          "ref": "github.com/argoproj/argo-cd/v3/pkg/apis/application/v1alpha1.SecretRef"
+        },
+        "owner": {
+          "kind": "string"
+        },
+        "user": {
+          "kind": "string"
+        }
+      },
+      "kind": "struct"
+    },
+    "github.com/argoproj/argo-cd/v3/pkg/apis/application/v1alpha1.SCMProviderGeneratorBitbucketServer": {
+      "fields": {
+        "allBranches": {
+          "kind": "other"
+        },
+        "api": {
+          "kind": "string"
+        },
+        "basicAuth": {
+          "ref": "github.com/argoproj/argo-cd/v3/pkg/apis/application/v1alpha1.BasicAuthBitbucketServer"
+        },
+        "bearerToken": {
+          "ref": "github.com/argoproj/argo-cd/v3/pkg/apis/application/v1alpha1.BearerTokenBitbucket"
+        },
+        "caRef": {
+          "ref": "github.com/argoproj/argo-cd/v3/pkg/apis/application/v1alpha1.ConfigMapKeyRef"
+        },
+        "insecure": {
+          "kind": "other"
+        },
+        "project": {
+          "kind": "string"
+        }
+      },
+      "kind": "struct"
+    },
+    "github.com/argoproj/argo-cd/v3/pkg/apis/application/v1alpha1.SCMProviderGeneratorFilter": {
+      "fields": {
+        "branchMatch": {
+          "kind": "string"
+        },
+        "labelMatch": {
+          "kind": "string"
+        },
+        "pathsDoNotExist": {
+          "item": {
+            "kind": "string"
+          },
+          "kind": "list"
+        },
+        "pathsExist": {
+          "item": {
+            "kind": "string"
+          },
+          "kind": "list"
+        },
+        "repositoryMatch": {
+          "kind": "string"
+        }
+      },
+      "kind": "struct"
+    },
+    "github.com/argoproj/argo-cd/v3/pkg/apis/application/v1alpha1.SCMProviderGeneratorGitea": {
+      "fields": {
+        "allBranches": {
+          "kind": "other"
+        },
+        "api": {
+          "kind": "string"
+        },
+        "insecure": {
+          "kind": "other"
+        },
+        "owner": {
+          "kind": "string"
+        },
+        "tokenRef": {
+          "ref": "github.com/argoproj/argo-cd/v3/pkg/apis/application/v1alpha1.SecretRef"
+        }
+      },
+      "kind": "struct"
+    },
+    "github.com/argoproj/argo-cd/v3/pkg/apis/application/v1alpha1.SCMProviderGeneratorGithub": {
+      "fields": {
+        "allBranches": {
+          "kind": "other"
+        },
+        "api": {
+          "kind": "string"
+        },
+        "appSecretName": {
+          "kind": "string"
+        },
+        "organization": {
+          "kind": "string"
+        },
+        "tokenRef": {
+          "ref": "github.com/argoproj/argo-cd/v3/pkg/apis/application/v1alpha1.SecretRef"
+        }
+      },
+      "kind": "struct"
+    },
+    "github.com/argoproj/argo-cd/v3/pkg/apis/application/v1alpha1.SCMProviderGeneratorGitlab": {
+      "fields": {
+        "allBranches": {
+          "kind": "other"
+        },
+        "api": {
+          "kind": "string"
+        },
+        "caRef": {
+          "ref": "github.com/argoproj/argo-cd/v3/pkg/apis/application/v1alpha1.ConfigMapKeyRef"
+        },
+        "group": {
+          "kind": "string"
+        },
+        "includeSharedProjects": {
+          "kind": "other"
+        },
+        "includeSubgroups": {
+          "kind": "other"
+        },
+        "insecure": {
+          "kind": "other"
+        },
+        "tokenRef": {
+          "ref": "github.com/argoproj/argo-cd/v3/pkg/apis/application/v1alpha1.SecretRef"
+        },
+        "topic": {
+          "kind": "string"
+        }
+      },
+      "kind": "struct"
+    },
+    "github.com/argoproj/argo-cd/v3/pkg/apis/application/v1alpha1.SecretRef": {
+      "fields": {
+        "key": {
+          "kind": "string"
+        },
+        "secretName": {
+          "kind": "string"
+        }
+      },
+      "kind": "struct"
+    },
+    "github.com/argoproj/argo-cd/v3/pkg/apis/application/v1alpha1.SourceHydrator": {
+      "fields": {
+        "drySource": {
+          "ref": "github.com/argoproj/argo-cd/v3/pkg/apis/application/v1alpha1.DrySource"
+        },
+        "hydrateTo": {
+          "ref": "github.com/argoproj/argo-cd/v3/pkg/apis/application/v1alpha1.HydrateTo"
+        },
+        "syncSource": {
+          "ref": "github.com/argoproj/argo-cd/v3/pkg/apis/application/v1alpha1.SyncSource"
+        }
+      },
+      "kind": "struct"
+    },
+    "github.com/argoproj/argo-cd/v3/pkg/apis/application/v1alpha1.SyncPolicy": {
+      "fields": {
+        "automated": {
+          "ref": "github.com/argoproj/argo-cd/v3/pkg/apis/application/v1alpha1.SyncPolicyAutomated"
+        },
+        "managedNamespaceMetadata": {
+          "ref": "github.com/argoproj/argo-cd/v3/pkg/apis/application/v1alpha1.ManagedNamespaceMetadata"
+        },
+        "retry": {
+          "ref": "github.com/argoproj/argo-cd/v3/pkg/apis/application/v1alpha1.RetryStrategy"
+        },
+        "syncOptions": {
+          "item": {
+            "kind": "string"
+          },
+          "kind": "list"
+        }
+      },
+      "kind": "struct"
+    },
+    "github.com/argoproj/argo-cd/v3/pkg/apis/application/v1alpha1.SyncPolicyAutomated": {
+      "fields": {
+        "allowEmpty": {
+          "kind": "other"
+        },
+        "enabled": {
+          "kind": "other"
+        },
+        "prune": {
+          "kind": "other"
+        },
+        "selfHeal": {
+          "kind": "other"
+        }
+      },
+      "kind": "struct"
+    },
+    "github.com/argoproj/argo-cd/v3/pkg/apis/application/v1alpha1.SyncSource": {
+      "fields": {
+        "path": {
+          "kind": "string"
+        },
+        "targetBranch": {
+          "kind": "string"
+        }
+      },
+      "kind": "struct"
+    },
+    "github.com/argoproj/argo-cd/v3/pkg/apis/application/v1alpha1.TagFilter": {
+      "fields": {
+        "key": {
+          "kind": "string"
+        },
+        "value": {
+          "kind": "string"
+        }
+      },
+      "kind": "struct"
+    },
+    "k8s.io/apimachinery/pkg/apis/meta/v1.LabelSelector": {
+      "fields": {
+        "matchExpressions": {
+          "item": {
+            "ref": "k8s.io/apimachinery/pkg/apis/meta/v1.LabelSelectorRequirement"
+          },
+          "kind": "list"
+        },
+        "matchLabels": {
+          "kind": "map",
+          "value": {
+            "kind": "string"
+          }
+        }
+      },
+      "kind": "struct"
+    },
+    "k8s.io/apimachinery/pkg/apis/meta/v1.LabelSelectorRequirement": {
+      "fields": {
+        "key": {
+          "kind": "string"
+        },
+        "operator": {
+          "kind": "string"
+        },
+        "values": {
+          "item": {
+            "kind": "string"
+          },
+          "kind": "list"
+        }
+      },
+      "kind": "struct"
+    }
+  },
+  "generator": {
+    "ref": "github.com/argoproj/argo-cd/v3/pkg/apis/application/v1alpha1.ApplicationSetGenerator"
+  },
+  "template": {
+    "ref": "github.com/argoproj/argo-cd/v3/pkg/apis/application/v1alpha1.ApplicationSetTemplate"
+  }
+}

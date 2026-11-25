@@ -1,0 +1,39 @@
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: platform
+  namespace: argocd
+spec:
+  goTemplate: true
+  goTemplateOptions: ["missingkey=error"]
+  generators:
+    - matrix:
+        generators:
+          # One entry per environment, from its config file.
+          - git:
+              repoURL: https://github.com/gillesl-dev/argocd-source-lint.git
+              revision: HEAD
+              files:
+                - path: envs/*/config.yaml
+          # Every application, in each environment.
+          - list:
+              elements:
+                - app: guestbook
+                  port: 80
+                - app: redis
+                  port: 6379
+  template:
+    metadata:
+      name: '{{ .app }}-{{ .path.basename | normalize }}'
+      labels:
+        env: '{{ .path.basename }}'
+        tier: '{{ if eq .app "redis" }}data{{ else }}web{{ end }}'
+    spec:
+      project: default
+      source:
+        repoURL: https://github.com/gillesl-dev/argocd-source-lint.git
+        targetRevision: HEAD
+        path: 'apps/{{ .path.basename }}/{{ .app }}'
+      destination:
+        server: '{{ .cluster.server }}'
+        namespace: '{{ printf "%s-%s" .app .cluster.name }}'

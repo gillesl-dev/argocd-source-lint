@@ -1,0 +1,4 @@
+scan_roots:
+  - apps/
+repo_urls:
+  - https://github.com/gillesl-dev/argocd-source-lint.git

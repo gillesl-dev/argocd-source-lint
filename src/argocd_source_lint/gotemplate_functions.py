@@ -28,10 +28,34 @@ from argocd_source_lint.appset_params import (
     go_format,
     sanitize_name,
 )
+from argocd_source_lint.unicode_unstable import is_unstable
 
 
 class GoCallError(Exception):
     """The Go function returns an error or panics: Argo CD's rendering fails."""
+
+
+class TooLarge(Exception):
+    """The result would go over MAX_STRING; it is not built."""
+
+
+# The largest string a function builds, the bound of gotemplate's output.
+MAX_STRING = 256 * 1024
+
+
+def _check_size(size: int) -> None:
+    if size > MAX_STRING:
+        raise TooLarge(f"rendering one string outputs more than {MAX_STRING // 1024} KiB")
+
+
+def _join(pieces: Any, separator: str = " ") -> str:
+    out: list[str] = []
+    total = 0
+    for piece in pieces:
+        total += len(piece) + len(separator)
+        _check_size(total - len(separator))
+        out.append(piece)
+    return separator.join(out)
 
 
 class NotSupported(Exception):
@@ -81,6 +105,8 @@ def upper(text: str) -> str:
 
 
 def replace(old: str, new: str, text: str) -> str:
+    count = text.count(old) if old else len(text) + 1
+    _check_size(len(text) + count * (len(new) - len(old)))
     return text.replace(old, new)
 
 
@@ -97,16 +123,17 @@ def _strval(value: Any) -> str:
 
 
 def quote(*values: Any) -> str:
-    return " ".join(go_quote(_strval(value)) for value in values if value is not None)
+    return _join(go_quote(_strval(value)) for value in values if value is not None)
 
 
 def cat(*values: Any) -> str:
-    return " ".join(go_print(value) for value in values if value is not None)
+    return _join(go_print(value) for value in values if value is not None)
 
 
 def indent(spaces: int, text: str) -> str:
     if spaces < 0:
         raise GoCallError("strings: negative Repeat count")
+    _check_size(spaces * (text.count("\n") + 1) + len(text))
     pad = " " * spaces
     return pad + text.replace("\n", "\n" + pad)
 
@@ -188,7 +215,14 @@ _QUOTE_ESCAPES = {
 }
 
 
+def check_stable(text: str) -> None:
+    """Refuse characters whose Unicode category Python and Go may not share."""
+    if not text.isascii() and any(is_unstable(char) for char in text):
+        raise NotSupported("characters from recent Unicode versions are not supported")
+
+
 def go_quote(text: str) -> str:
+    check_stable(text)
     out = ['"']
     for char in text:
         if char in '"\\':
@@ -238,6 +272,8 @@ def sprintf(format_text: str, *args: Any) -> str:
             raise NotSupported(f"the printf verb `{match.group(0)}` is not supported")
         if arg_index >= len(args):
             raise NotSupported("printf with a missing argument is not supported")
+        if int(width or 0) > MAX_STRING or int(precision or 0) > MAX_STRING:
+            _check_size(max(int(width or 0), int(precision or 0)))
         text = _format_verb(verb, args[arg_index], "0" in flags, precision)
         arg_index += 1
         if width and len(text) < int(width):
@@ -250,9 +286,10 @@ def sprintf(format_text: str, *args: Any) -> str:
             else:
                 text = " " * padding + text
         out.append(text)
+        _check_size(sum(map(len, out)))
     if arg_index != len(args):
         raise NotSupported("printf with extra arguments is not supported")
-    return "".join(out)
+    return _join(out, "")
 
 
 def _format_verb(verb: str, value: Any, zero: bool, precision: str | None) -> str:
@@ -298,7 +335,7 @@ def _json_string(text: str) -> str:
         code = ord(char)
         if char in _JSON_SHORT_ESCAPES:
             out.append(_JSON_SHORT_ESCAPES[char])
-        elif code < 0x20 or char in "<>&" or char in "  ":
+        elif code < 0x20 or char in "<>&" or char in "\u2028\u2029":
             # HTML-sensitive characters are escaped too (escapeHTML).
             out.append(f"\\u{code:04x}")
         elif 0xD800 <= code <= 0xDFFF:
@@ -416,6 +453,9 @@ def _yaml_key_less(a: str, b: str) -> int:
     """keyList.Less in go-yaml v2 sorter.go, as a cmp function."""
     if a == b:
         return 0
+    # unicode.IsLetter and IsDigit decide the order.
+    check_stable(a)
+    check_stable(b)
     ar, br = a, b
     for i in range(min(len(ar), len(br))):
         if ar[i] == br[i]:
@@ -581,9 +621,14 @@ def _fold_plain(text: str, column: int, indent: int) -> str:
 
 
 def _yaml_printable(char: str) -> bool:
-    """is_printable in go-yaml v2, which also excludes characters over U+FFFF;
-    in doubt (Unicode versions), False."""
-    return char.isprintable() and ord(char) <= 0xFFFF and char not in "﻿￾￿"
+    """is_printable in go-yaml v2 (yamlprivateh.go), which tests UTF-8 bytes,
+    not Unicode categories. Line breaks other than LF (is_break) are refused."""
+    code = ord(char)
+    return (
+        0x20 <= code <= 0x7E
+        or (0xA0 <= code <= 0xD7FF and code not in (0x85, 0x2028, 0x2029))
+        or (0xE000 <= code <= 0xFFFD and code != 0xFEFF)
+    )
 
 
 def _double_quoted(value: str) -> str:

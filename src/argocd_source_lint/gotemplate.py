@@ -21,10 +21,12 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from argocd_source_lint import gotemplate_functions as functions
+from argocd_source_lint.unicode_unstable import is_unstable
 
 __all__ = [
     "ARGO_CD_FUNCTIONS",
     "ArgoTemplateError",
+    "GoStringMap",
     "NoValueError",
     "SUPPORTED_FUNCTIONS",
     "TemplateError",
@@ -52,6 +54,50 @@ class UnsupportedFunctionError(UnsupportedTemplateError):
     def __init__(self, name: str) -> None:
         super().__init__(f"the function `{name}` is not supported by this tool")
         self.name = name
+
+
+class TemplateLimitError(TemplateError):
+    """Rendering would go over one of this module's bounds."""
+
+
+# Templates come from the repository, which may not be trusted. Bounds per
+# rendered string, then per ApplicationSet (Budget).
+MAX_TEMPLATE_LENGTH = 64 * 1024
+MAX_OUTPUT = functions.MAX_STRING
+MAX_RANGE_ITERATIONS = 10_000
+MAX_NESTING = 100
+MAX_OPERATIONS = 1_000_000
+MAX_TOTAL_OUTPUT = 16 * 1024 * 1024
+# Operation costs, measured so that one operation takes about 2 microseconds
+# and MAX_OPERATIONS a few seconds at most: a node or a command costs 1, a
+# function call 10, plus 1 per 64 characters it reads or writes, times the
+# weight of the functions that do more work per character.
+_CALL_COST = 10
+_BYTES_PER_OPERATION = 64
+_BYTE_WEIGHTS = {"toYaml": 16, "mustToPrettyJson": 6, "toJson": 5, "quote": 2}
+
+
+class Budget:
+    """Template operations and output left to one ApplicationSet."""
+
+    def __init__(self, operations: int = MAX_OPERATIONS, output: int = MAX_TOTAL_OUTPUT) -> None:
+        self.operations = operations
+        self.output = output
+
+    def spend(self, cost: int = 1) -> None:
+        self.operations -= cost
+        if self.operations < 0:
+            raise TemplateLimitError(
+                f"rendering takes more than {MAX_OPERATIONS} template operations"
+            )
+
+    def write(self, size: int) -> None:
+        self.output -= size
+        if self.output < 0:
+            raise TemplateLimitError(
+                f"the ApplicationSet renders more than {MAX_TOTAL_OUTPUT // (1024 * 1024)} MiB "
+                "of output"
+            )
 
 
 class NoValueError(UnsupportedTemplateError):
@@ -91,6 +137,15 @@ ARGO_CD_FUNCTIONS = frozenset(
     urlParse urlquery uuidv4 values without wrap wrapWith
     """.split()
 )
+
+
+class GoStringMap(dict[str, str]):
+    """A Go map[string]string: the git generator's `values` in goTemplate mode.
+
+    It differs from the other maps (map[string]interface{}) in `index` of a
+    missing key, which gives "" instead of nil, and in mergo, which panics
+    when merging a map[string]interface{} into it.
+    """
 
 
 # ---- Values ----
@@ -162,6 +217,9 @@ class _Item:
 
 
 def _is_alphanumeric(char: str) -> bool:
+    """isAlphaNumeric in lex.go: unicode.IsLetter or unicode.IsDigit."""
+    if char and not char.isascii() and is_unstable(char):
+        raise UnsupportedTemplateError("characters from recent Unicode versions are not supported")
     return char == "_" or char.isalpha() or char.isdecimal()
 
 
@@ -521,6 +579,7 @@ class _Parser:
         self.index = 0
         self.vars = ["$"]
         self.range_depth = 0
+        self.depth = 0
 
     def _error(self, message: str) -> ArgoTemplateError:
         return ArgoTemplateError(f"template: {message}")
@@ -610,7 +669,13 @@ class _Parser:
         if item.typ != typ:
             raise self._unexpected(item, context)
 
+    def _nest(self) -> None:
+        self.depth += 1
+        if self.depth > MAX_NESTING:
+            raise TemplateLimitError(f"templates nest deeper than {MAX_NESTING} levels")
+
     def _control(self, kind: str) -> _Control:
+        self._nest()
         saved = len(self.vars)
         pipe = self._pipeline(kind, _RIGHT_DELIM)
         if kind == "range":
@@ -634,6 +699,7 @@ class _Parser:
                 if not isinstance(end, _End):
                     raise self._error("expected end; found {{else}}")
         del self.vars[saved:]
+        self.depth -= 1
         return _Control(kind, pipe, body, else_body)
 
     def _pipeline(self, context: str, end: str) -> _Pipe:
@@ -735,7 +801,10 @@ class _Parser:
         if typ == _NUMBER:
             return _number(item.val)
         if typ == _LEFT_PAREN:
-            return self._pipeline("parenthesized pipeline", _RIGHT_PAREN)
+            self._nest()
+            pipe = self._pipeline("parenthesized pipeline", _RIGHT_PAREN)
+            self.depth -= 1
+            return pipe
         if typ == _STRING:
             return _String(_unquote(item.val))
         if typ == _RAW_STRING:
@@ -845,19 +914,33 @@ class _ContinueSignal(Exception):
 
 
 class _State:
-    def __init__(self, data: Any, missing_error: bool) -> None:
+    def __init__(self, data: Any, missing_error: bool, budget: Budget) -> None:
         self.vars: list[list[Any]] = [["$", data]]
         self.out: list[str] = []
         self.missing_error = missing_error
         self.no_value = False
+        self.budget = budget
+        self.size = 0
+        self.iterations = 0
 
     def _error(self, message: str) -> ArgoTemplateError:
         return ArgoTemplateError(f"template: {message}")
 
+    def write(self, text: str) -> None:
+        self.size += len(text)
+        if self.size > MAX_OUTPUT:
+            raise TemplateLimitError(
+                f"rendering one string outputs more than {MAX_OUTPUT // 1024} KiB"
+            )
+        self.budget.write(len(text))
+        self.budget.spend(len(text) // _BYTES_PER_OPERATION)
+        self.out.append(text)
+
     def walk(self, dot: Any, nodes: list[Any]) -> None:
         for node in nodes:
+            self.budget.spend()
             if isinstance(node, _Text):
-                self.out.append(node.text)
+                self.write(node.text)
             elif isinstance(node, _Action):
                 value = self.eval_pipeline(dot, node.pipe)
                 if not node.pipe.decl:
@@ -875,9 +958,9 @@ class _State:
     def print_value(self, value: Any) -> None:
         if value is MISSING:
             self.no_value = True
-            self.out.append("<no value>")
+            self.write("<no value>")
         else:
-            self.out.append(_go_print(value))
+            self.write(_go_print(value))
 
     def walk_if_or_with(self, dot: Any, node: _Control) -> None:
         mark = len(self.vars)
@@ -895,6 +978,11 @@ class _State:
         decl = node.pipe.decl
 
         def one_iteration(index: Any, elem: Any) -> None:
+            self.iterations += 1
+            if self.iterations > MAX_RANGE_ITERATIONS:
+                raise TemplateLimitError(
+                    f"rendering one string iterates `range` more than {MAX_RANGE_ITERATIONS} times"
+                )
             # The pipeline pushed its variables: the top one gets the element,
             # the one below it (with two variables) the index.
             if decl:
@@ -950,6 +1038,7 @@ class _State:
             raise self._error("can't give argument to non-function")
 
     def eval_command(self, dot: Any, cmd: _Command, final: Any) -> Any:
+        self.budget.spend()
         first = cmd.args[0]
         if isinstance(first, _Field):
             return self.eval_field_chain(dot, first.idents, cmd.args, final)
@@ -1021,11 +1110,24 @@ class _State:
         if final is not _NOT_GIVEN:
             values.append(self.validate(final, kind(len(nodes))))
         try:
-            return signature.function(*values)
+            # A call costs more than a node, and its strings cost by their size.
+            size = sum(len(value) for value in values if isinstance(value, str))
+            weight = _BYTE_WEIGHTS.get(name, 1)
+            self.budget.spend(_CALL_COST + weight * size // _BYTES_PER_OPERATION)
+            result = signature.function(*values)
+            if isinstance(result, str):
+                self.budget.spend(weight * len(result) // _BYTES_PER_OPERATION)
+        except functions.TooLarge as exc:
+            raise TemplateLimitError(str(exc)) from None
         except functions.GoCallError as exc:
             raise self._error(f"error calling {name}: {exc}") from None
         except functions.NotSupported as exc:
             raise UnsupportedTemplateError(str(exc)) from None
+        if isinstance(result, str) and len(result) > MAX_OUTPUT:
+            raise TemplateLimitError(
+                f"rendering one string outputs more than {MAX_OUTPUT // 1024} KiB"
+            )
+        return result
 
     def eval_and_or(self, name: str, dot: Any, nodes: tuple[Any, ...], final: Any) -> Any:
         """The special case of evalCall: `and` and `or` stop at the first
@@ -1205,8 +1307,8 @@ def _index(item: Any, *indexes: Any) -> Any:
         elif isinstance(item, dict):
             if not isinstance(index, str):
                 raise functions.GoCallError("a map index must be a string")
-            # A missing key gives the zero value: nil.
-            item = item.get(index)
+            # A missing key gives the zero value: nil, or "" for a map of strings.
+            item = item.get(index, "" if isinstance(item, GoStringMap) else None)
         else:
             raise functions.GoCallError("can't index this item")
     return item
@@ -1261,16 +1363,30 @@ def _missing_key_error(options: Sequence[str]) -> bool:
     return mode == "error"
 
 
-def render(template: str, params: dict[str, Any], options: Sequence[str] = ()) -> str:
+def render(
+    template: str,
+    params: dict[str, Any],
+    options: Sequence[str] = (),
+    budget: Budget | None = None,
+) -> str:
     """The text Argo CD's Render.Replace produces from `template` and `params`.
 
-    Raises ArgoTemplateError when Argo CD's rendering fails, and
-    UnsupportedTemplateError when this module can't tell what it produces.
+    Raises ArgoTemplateError when Argo CD's rendering fails,
+    UnsupportedTemplateError when this module can't tell what it produces, and
+    TemplateLimitError past a bound. `budget` is shared by the strings of one
+    ApplicationSet.
     """
     missing_error = _missing_key_error(options)
-    nodes = _Parser(_Lexer(template).lex()).parse()
-    state = _State(params, missing_error)
-    state.walk(params, nodes)
+    if len(template) > MAX_TEMPLATE_LENGTH:
+        raise TemplateLimitError(
+            f"a template string is longer than {MAX_TEMPLATE_LENGTH // 1024} KiB"
+        )
+    state = _State(params, missing_error, budget or Budget())
+    try:
+        nodes = _Parser(_Lexer(template).lex()).parse()
+        state.walk(params, nodes)
+    except RecursionError:
+        raise TemplateLimitError("template values nest too deeply") from None
     if state.no_value:
         raise NoValueError("the template prints `<no value>` for a missing or null value")
     return "".join(state.out)

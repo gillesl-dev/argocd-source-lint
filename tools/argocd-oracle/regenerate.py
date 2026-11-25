@@ -37,6 +37,9 @@ CASES = ROOT / "tests" / "fixtures" / "appset_oracle_cases.yaml"
 EXPECTED = ROOT / "tests" / "fixtures" / "appset_oracle_expected.json"
 RENDER_CASES = ROOT / "tests" / "fixtures" / "gotemplate_render_cases.yaml"
 RENDER_EXPECTED = ROOT / "tests" / "fixtures" / "gotemplate_render_expected.json"
+CATEGORIES = ROOT / "tests" / "fixtures" / "go_unicode_categories.json"
+# The fields of Argo CD's types that the controller renders, read at run time.
+SCHEMA = ROOT / "src" / "argocd_source_lint" / "argocd_schema.json"
 IMAGE = "golang:1.25.5-alpine"
 APPSET_PATH = "bootstrap/appset.yaml"
 RUNS = 3
@@ -85,9 +88,15 @@ def _stable(outputs: dict) -> dict:
     appsets = []
     for appset in outputs["appsets"]:
         appset = dict(appset)
-        if appset.get("error"):
-            for pattern, replacement in _UNSTABLE_ERRORS:
-                appset["error"] = pattern.sub(replacement, appset["error"])
+        for field in ("error", "paramsError"):
+            if appset.get(field):
+                for pattern, replacement in _UNSTABLE_ERRORS:
+                    appset[field] = pattern.sub(replacement, appset[field])
+        if appset.get("params"):
+            appset["params"] = [
+                sorted(sets or [], key=lambda params: json.dumps(params, sort_keys=True))
+                for sets in appset["params"]
+            ]
         if appset.get("applications"):
             # The merge generator emits its entries in map order; the tests
             # compare Applications as an unordered set.
@@ -126,6 +135,38 @@ def render_inputs() -> list[dict]:
     ]
 
 
+def run_oracle(payload: dict, repos: Path, runs: int = 1) -> list[dict]:
+    """Build the oracle in Docker and run it `runs` times on `payload`, with
+    the case repositories of `repos` mounted at /repos."""
+    gomod = os.environ.get("ORACLE_GOMODCACHE", "argocd-oracle-gomod")
+    gocache = os.environ.get("ORACLE_GOCACHE", "argocd-oracle-gocache")
+    script = (
+        "apk add --no-cache git >/dev/null "
+        "&& git config --global --add safe.directory '*' "
+        "&& CGO_ENABLED=0 go build -o /tmp/oracle . "
+        "&& cat > /tmp/input.json "
+        f"&& for run in $(seq {runs}); do /tmp/oracle < /tmp/input.json || exit 1; done"
+    )
+    result = subprocess.run(
+        [
+            "docker", "run", "--rm", "-i",
+            "-v", f"{ORACLE}:/src", "-v", f"{repos}:/repos", "-v", f"{gomod}:/go/pkg/mod",
+            "-v", f"{gocache}:/root/.cache/go-build",
+            "-w", "/src", IMAGE, "sh", "-c", script,
+        ],
+        input=json.dumps(payload).encode(),
+        capture_output=True,
+        env={**os.environ, "MSYS_NO_PATHCONV": "1"},
+    )  # fmt: skip
+    if result.returncode != 0:
+        sys.stderr.write(result.stderr.decode(errors="replace"))
+        sys.exit(result.returncode)
+    outputs = _decode_all(result.stdout)
+    if len(outputs) != runs:
+        sys.exit(f"expected {runs} oracle runs, got {len(outputs)}")
+    return outputs
+
+
 def main() -> int:
     cases = YAML(typ="safe").load(CASES.read_text(encoding="utf-8"))
     names = [case["name"] for case in cases]
@@ -146,36 +187,14 @@ def main() -> int:
                 }
             )
 
-        gomod = os.environ.get("ORACLE_GOMODCACHE", "argocd-oracle-gomod")
-        gocache = os.environ.get("ORACLE_GOCACHE", "argocd-oracle-gocache")
         # The oracle runs several times on the same input, so that an output
         # depending on Go's map order shows up here rather than as churn in
         # the expected files.
-        script = (
-            "apk add --no-cache git >/dev/null "
-            "&& git config --global --add safe.directory '*' "
-            "&& CGO_ENABLED=0 go build -o /tmp/oracle . "
-            "&& cat > /tmp/input.json "
-            f"&& for run in $(seq {RUNS}); do /tmp/oracle < /tmp/input.json || exit 1; done"
-        )
-        result = subprocess.run(
-            [
-                "docker", "run", "--rm", "-i",
-                "-v", f"{ORACLE}:/src", "-v", f"{repos}:/repos", "-v", f"{gomod}:/go/pkg/mod",
-                "-v", f"{gocache}:/root/.cache/go-build",
-                "-w", "/src", IMAGE, "sh", "-c", script,
-            ],
-            input=json.dumps({"appsets": inputs, "renders": renders}).encode(),
-            capture_output=True,
-            env={**os.environ, "MSYS_NO_PATHCONV": "1"},
-        )  # fmt: skip
-        if result.returncode != 0:
-            sys.stderr.write(result.stderr.decode(errors="replace"))
-            return result.returncode
-        runs = [_stable(outputs) for outputs in _decode_all(result.stdout)]
+        runs = [
+            _stable(outputs)
+            for outputs in run_oracle({"appsets": inputs, "renders": renders}, repos, RUNS)
+        ]
 
-    if len(runs) != RUNS:
-        sys.exit(f"expected {RUNS} oracle runs, got {len(runs)}")
     outputs = runs[0]
     unstable = [
         name
@@ -201,6 +220,13 @@ def main() -> int:
     ]
     _write_json(RENDER_EXPECTED, {"functions": outputs["functions"], "renders": rendered})
     print(f"{len(rendered)} renders written to {RENDER_EXPECTED.relative_to(ROOT)}")
+    # One range per line keeps the file readable and its diffs small.
+    lines = ",\n".join(json.dumps(item) for item in outputs["categories"])
+    CATEGORIES.write_bytes(f"[\n{lines}\n]\n".encode())
+    count = len(outputs["categories"])
+    print(f"{count} Unicode ranges written to {CATEGORIES.relative_to(ROOT)}")
+    _write_json(SCHEMA, outputs["schema"])
+    print(f"{len(outputs['schema']['definitions'])} types written to {SCHEMA.relative_to(ROOT)}")
     return 0
 
 

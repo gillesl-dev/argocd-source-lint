@@ -473,3 +473,910 @@
           project: default
           source: {repoURL: https://example.invalid/repo.git, targetRevision: HEAD, path: 'apps/{{env}}'}
           destination: {server: https://kubernetes.default.svc, namespace: default}
+
+# ---- goTemplate: true. The oracle also records each generator's param sets. ----
+
+- name: gt-list-raw-values
+  appset: |
+    apiVersion: argoproj.io/v1alpha1
+    kind: ApplicationSet
+    metadata: {name: s, namespace: argocd}
+    spec:
+      goTemplate: true
+      generators:
+        - list:
+            elements:
+              - env: dev
+                replicas: 3
+                ratio: 0.5
+                enabled: true
+                tags: [a, b]
+                cfg: {region: eu, nested: {deep: 1}}
+                values: {dir: d1}
+                nothing: null
+              - env: prod
+            elementsYaml: |
+              - env: yaml
+                port: 8080
+                big: 1e21
+                on: 'on'
+      template:
+        metadata: {name: 'app-{{ .env }}'}
+        spec:
+          project: default
+          source: {repoURL: https://example.invalid/repo.git, targetRevision: HEAD, path: 'apps/{{ .env }}'}
+          destination: {server: https://kubernetes.default.svc, namespace: default}
+
+- name: gt-list-element-not-object
+  appset: |
+    apiVersion: argoproj.io/v1alpha1
+    kind: ApplicationSet
+    metadata: {name: s, namespace: argocd}
+    spec:
+      goTemplate: true
+      generators:
+        - list:
+            elements: [{env: dev}, just-a-string]
+      template:
+        metadata: {name: 'app-{{ .env }}'}
+        spec:
+          project: default
+          source: {repoURL: https://example.invalid/repo.git, targetRevision: HEAD, path: 'apps/{{ .env }}'}
+          destination: {server: https://kubernetes.default.svc, namespace: default}
+
+- name: gt-git-directories-values
+  files:
+    apps/web/kustomization.yaml: "resources: []\n"
+    apps/api/v1/kustomization.yaml: "resources: []\n"
+  appset: |
+    apiVersion: argoproj.io/v1alpha1
+    kind: ApplicationSet
+    metadata: {name: s, namespace: argocd}
+    spec:
+      goTemplate: true
+      generators:
+        - git:
+            repoURL: https://example.invalid/repo.git
+            revision: HEAD
+            directories: [{path: 'apps/*'}, {path: 'apps/*/*'}]
+            values:
+              name: '{{ .path.basename }}'
+              second: '{{ index .path.segments 1 }}'
+              plain: fixed
+      template:
+        metadata: {name: '{{ .values.name }}'}
+        spec:
+          project: default
+          source: {repoURL: https://example.invalid/repo.git, targetRevision: HEAD, path: '{{ .path.path }}'}
+          destination: {server: https://kubernetes.default.svc, namespace: '{{ .path.basenameNormalized }}'}
+
+- name: gt-git-directories-prefix
+  files:
+    clusters/Prod_EU/kustomization.yaml: "resources: []\n"
+  appset: |
+    apiVersion: argoproj.io/v1alpha1
+    kind: ApplicationSet
+    metadata: {name: s, namespace: argocd}
+    spec:
+      goTemplate: true
+      generators:
+        - git:
+            repoURL: https://example.invalid/repo.git
+            revision: HEAD
+            pathParamPrefix: cl
+            directories: [{path: 'clusters/*'}]
+      template:
+        metadata: {name: '{{ .cl.path.basenameNormalized }}'}
+        spec:
+          project: default
+          source: {repoURL: https://example.invalid/repo.git, targetRevision: HEAD, path: '{{ .cl.path.path }}'}
+          destination: {server: https://kubernetes.default.svc, namespace: default}
+
+- name: gt-git-files-content
+  files:
+    envs/dev/config.json: '{"cluster": {"name": "dev", "address": "https://dev.invalid", "replicas": 2}, "path": "shadowed", "values": {"x": "shadowed"}, "list": [1, "two", null]}'
+    envs/prod/config.yaml: "cluster:\n  name: prod\n  address: https://prod.invalid\n  enabled: yes\n  mode: 0755\nempty: null\n"
+    envs/multi/config.yaml: "- cluster: {name: m1}\n- cluster: {name: m2}\n"
+    envs/blank/config.yaml: ""
+  appset: |
+    apiVersion: argoproj.io/v1alpha1
+    kind: ApplicationSet
+    metadata: {name: s, namespace: argocd}
+    spec:
+      goTemplate: true
+      generators:
+        - git:
+            repoURL: https://example.invalid/repo.git
+            revision: HEAD
+            files: [{path: 'envs/*/config.*'}]
+            values:
+              cluster: '{{ .path.basename }}'
+      template:
+        metadata: {name: '{{ .path.basename }}-{{ .path.filenameNormalized }}'}
+        spec:
+          project: default
+          source: {repoURL: https://example.invalid/repo.git, targetRevision: HEAD, path: '{{ .path.path }}'}
+          destination: {server: https://kubernetes.default.svc, namespace: default}
+
+- name: gt-git-files-prefix
+  files:
+    envs/dev/config.json: '{"name": "dev", "path": "kept"}'
+  appset: |
+    apiVersion: argoproj.io/v1alpha1
+    kind: ApplicationSet
+    metadata: {name: s, namespace: argocd}
+    spec:
+      goTemplate: true
+      generators:
+        - git:
+            repoURL: https://example.invalid/repo.git
+            revision: HEAD
+            pathParamPrefix: f
+            files: [{path: 'envs/*/config.json'}]
+      template:
+        metadata: {name: 'app-{{ .name }}'}
+        spec:
+          project: default
+          source: {repoURL: https://example.invalid/repo.git, targetRevision: HEAD, path: '{{ .f.path.path }}'}
+          destination: {server: https://kubernetes.default.svc, namespace: default}
+
+- name: gt-git-values-error
+  files:
+    apps/web/kustomization.yaml: "resources: []\n"
+  appset: |
+    apiVersion: argoproj.io/v1alpha1
+    kind: ApplicationSet
+    metadata: {name: s, namespace: argocd}
+    spec:
+      goTemplate: true
+      generators:
+        - git:
+            repoURL: https://example.invalid/repo.git
+            revision: HEAD
+            directories: [{path: 'apps/*'}]
+            values: {bad: '{{ .path.basename.x }}'}
+      template:
+        metadata: {name: 'app-{{ .path.basename }}'}
+        spec:
+          project: default
+          source: {repoURL: https://example.invalid/repo.git, targetRevision: HEAD, path: '{{ .path.path }}'}
+          destination: {server: https://kubernetes.default.svc, namespace: default}
+
+- name: gt-git-values-missing-key
+  files:
+    apps/web/kustomization.yaml: "resources: []\n"
+  appset: |
+    apiVersion: argoproj.io/v1alpha1
+    kind: ApplicationSet
+    metadata: {name: s, namespace: argocd}
+    spec:
+      goTemplate: true
+      generators:
+        - git:
+            repoURL: https://example.invalid/repo.git
+            revision: HEAD
+            directories: [{path: 'apps/*'}]
+            values: {team: '{{ .nope }}'}
+      template:
+        metadata: {name: 'app-{{ .path.basename }}'}
+        spec:
+          project: default
+          source: {repoURL: https://example.invalid/repo.git, targetRevision: HEAD, path: '{{ .path.path }}'}
+          destination: {server: https://kubernetes.default.svc, namespace: default}
+
+- name: gt-matrix-list-git-chained
+  files:
+    apps/dev/web/kustomization.yaml: "resources: []\n"
+    apps/dev/api/kustomization.yaml: "resources: []\n"
+    apps/prod/web/kustomization.yaml: "resources: []\n"
+  appset: |
+    apiVersion: argoproj.io/v1alpha1
+    kind: ApplicationSet
+    metadata: {name: s, namespace: argocd}
+    spec:
+      goTemplate: true
+      generators:
+        - matrix:
+            generators:
+              - list:
+                  elements: [{env: dev}, {env: prod}]
+              - git:
+                  repoURL: https://example.invalid/repo.git
+                  revision: HEAD
+                  directories: [{path: 'apps/{{ .env }}/*'}]
+      template:
+        metadata: {name: '{{ .env }}-{{ .path.basename }}'}
+        spec:
+          project: default
+          source: {repoURL: https://example.invalid/repo.git, targetRevision: HEAD, path: '{{ .path.path }}'}
+          destination: {server: https://kubernetes.default.svc, namespace: '{{ .env }}'}
+
+- name: gt-matrix-deep-merge
+  appset: |
+    apiVersion: argoproj.io/v1alpha1
+    kind: ApplicationSet
+    metadata: {name: s, namespace: argocd}
+    spec:
+      goTemplate: true
+      generators:
+        - matrix:
+            generators:
+              - list:
+                  elements:
+                    - name: a
+                      cfg: {x: 1, sub: {p: 1}, emptyMap: {}, replaced: {k: v}}
+                      l: []
+                      s: ""
+                      nn: null
+                      z: 0
+                      f: false
+                      only: first
+              - list:
+                  elements:
+                    - name: b
+                      cfg: {yy: 2, sub: {q: 2}, emptyMap: {kept: x}, replaced: scalar}
+                      l: [1, 2]
+                      s: bval
+                      nn: 1
+                      z: 5
+                      f: true
+                      second: only
+      template:
+        metadata: {name: 'app-{{ .name }}'}
+        spec:
+          project: default
+          source: {repoURL: https://example.invalid/repo.git, targetRevision: HEAD, path: 'apps/{{ .name }}'}
+          destination: {server: https://kubernetes.default.svc, namespace: default}
+
+- name: gt-matrix-second-child-rendered
+  files:
+    components.yaml: "components:\n  - {name: guestbook, chart: guestbook, version: 1.2.3}\n  - {name: redis, chart: redis, version: 17}\n"
+  appset: |
+    apiVersion: argoproj.io/v1alpha1
+    kind: ApplicationSet
+    metadata: {name: s, namespace: argocd}
+    spec:
+      goTemplate: true
+      generators:
+        - matrix:
+            generators:
+              - git:
+                  repoURL: https://example.invalid/repo.git
+                  revision: HEAD
+                  files: [{path: components.yaml}]
+              - list:
+                  elementsYaml: '{{ .components | toJson }}'
+                  elements:
+                    - name: '{{ .path.filename | trimSuffix ".yaml" }}-extra'
+                      chart: '{{ index .components 1 "chart" }}'
+      template:
+        metadata: {name: '{{ .name }}'}
+        spec:
+          project: default
+          source: {repoURL: https://example.invalid/repo.git, targetRevision: HEAD, path: 'charts/{{ .chart }}'}
+          destination: {server: https://kubernetes.default.svc, namespace: default}
+
+- name: gt-matrix-empty-first-entry
+  appset: |
+    apiVersion: argoproj.io/v1alpha1
+    kind: ApplicationSet
+    metadata: {name: s, namespace: argocd}
+    spec:
+      goTemplate: true
+      generators:
+        - matrix:
+            generators:
+              - list:
+                  elements: [{}]
+              - list:
+                  elements: [{name: '{{ .env }}'}]
+      template:
+        metadata: {name: 'app'}
+        spec:
+          project: default
+          source: {repoURL: https://example.invalid/repo.git, targetRevision: HEAD, path: 'apps'}
+          destination: {server: https://kubernetes.default.svc, namespace: default}
+
+- name: gt-matrix-values-maps
+  files:
+    apps/web/kustomization.yaml: "resources: []\n"
+  appset: |
+    apiVersion: argoproj.io/v1alpha1
+    kind: ApplicationSet
+    metadata: {name: s, namespace: argocd}
+    spec:
+      goTemplate: true
+      generators:
+        - matrix:
+            generators:
+              - list:
+                  elements: [{env: dev, values: {owner: team-a}}]
+              - git:
+                  repoURL: https://example.invalid/repo.git
+                  revision: HEAD
+                  directories: [{path: 'apps/*'}]
+                  values: {name: 'fixed-{{ .env }}'}
+      template:
+        metadata: {name: '{{ .env }}-{{ .path.basename }}'}
+        spec:
+          project: default
+          source: {repoURL: https://example.invalid/repo.git, targetRevision: HEAD, path: '{{ .path.path }}'}
+          destination: {server: https://kubernetes.default.svc, namespace: default}
+
+- name: gt-matrix-second-child-no-value
+  unsupported_params: the second child renders <no value> with the first child entry
+  files:
+    apps/web/kustomization.yaml: "resources: []\n"
+  appset: |
+    apiVersion: argoproj.io/v1alpha1
+    kind: ApplicationSet
+    metadata: {name: s, namespace: argocd}
+    spec:
+      goTemplate: true
+      generators:
+        - matrix:
+            generators:
+              - list:
+                  elements: [{env: dev, values: {owner: team-a}}]
+              - git:
+                  repoURL: https://example.invalid/repo.git
+                  revision: HEAD
+                  directories: [{path: 'apps/*'}]
+                  values: {name: '{{ .path.basename }}'}
+      template:
+        metadata: {name: '{{ .env }}-{{ .path.basename }}'}
+        spec:
+          project: default
+          source: {repoURL: https://example.invalid/repo.git, targetRevision: HEAD, path: '{{ .path.path }}'}
+          destination: {server: https://kubernetes.default.svc, namespace: default}
+
+- name: gt-matrix-values-maps-reversed
+  files:
+    apps/web/kustomization.yaml: "resources: []\n"
+  appset: |
+    apiVersion: argoproj.io/v1alpha1
+    kind: ApplicationSet
+    metadata: {name: s, namespace: argocd}
+    spec:
+      goTemplate: true
+      generators:
+        - matrix:
+            generators:
+              - git:
+                  repoURL: https://example.invalid/repo.git
+                  revision: HEAD
+                  directories: [{path: 'apps/*'}]
+                  values: {name: '{{ .path.basename }}'}
+              - list:
+                  elements: [{env: dev, values: {owner: team-a}}]
+      template:
+        metadata: {name: '{{ .env }}-{{ .path.basename }}'}
+        spec:
+          project: default
+          source: {repoURL: https://example.invalid/repo.git, targetRevision: HEAD, path: '{{ .path.path }}'}
+          destination: {server: https://kubernetes.default.svc, namespace: default}
+
+- name: gt-merge-deep
+  appset: |
+    apiVersion: argoproj.io/v1alpha1
+    kind: ApplicationSet
+    metadata: {name: s, namespace: argocd}
+    spec:
+      goTemplate: true
+      generators:
+        - merge:
+            mergeKeys: [server]
+            generators:
+              - list:
+                  elements:
+                    - {server: one, cfg: {a: 1, sub: {x: 1}}, tags: [base]}
+                    - {server: two, cfg: {a: 2}}
+              - list:
+                  elements:
+                    - {server: one, cfg: {b: 2, sub: {yy: 2}}, tags: []}
+                    - {server: three, cfg: {c: 3}}
+      template:
+        metadata: {name: 'app-{{ .server }}'}
+        spec:
+          project: default
+          source: {repoURL: https://example.invalid/repo.git, targetRevision: HEAD, path: 'apps/{{ .server }}'}
+          destination: {server: https://kubernetes.default.svc, namespace: default}
+
+- name: gt-merge-nested-key
+  appset: |
+    apiVersion: argoproj.io/v1alpha1
+    kind: ApplicationSet
+    metadata: {name: s, namespace: argocd}
+    spec:
+      goTemplate: true
+      generators:
+        - merge:
+            mergeKeys: [cfg]
+            generators:
+              - list:
+                  elements: [{cfg: {a: 1}, v: base}, {cfg: {a: 2}, v: base2}]
+              - list:
+                  elements: [{cfg: {a: 1}, v: override}]
+      template:
+        metadata: {name: 'app-{{ .v }}'}
+        spec:
+          project: default
+          source: {repoURL: https://example.invalid/repo.git, targetRevision: HEAD, path: 'apps/{{ .v }}'}
+          destination: {server: https://kubernetes.default.svc, namespace: default}
+
+- name: gt-list-yaml11-scalars
+  unsupported_params: Kubernetes reads the manifest as YAML 1.1, this tool as YAML 1.2
+  appset: |
+    apiVersion: argoproj.io/v1alpha1
+    kind: ApplicationSet
+    metadata: {name: s, namespace: argocd}
+    spec:
+      goTemplate: true
+      generators:
+        - list:
+            elements:
+              - {env: dev, enabled: yes, mode: 0755, y: 1, day: 2024-01-02}
+      template:
+        metadata: {name: 'app-{{ .env }}'}
+        spec:
+          project: default
+          source: {repoURL: https://example.invalid/repo.git, targetRevision: HEAD, path: 'apps/{{ .env }}'}
+          destination: {server: https://kubernetes.default.svc, namespace: default}
+
+# ---- goTemplate: only the fields of Argo CD's types are rendered ----
+
+- name: gt-unknown-fields-not-rendered
+  appset: |
+    apiVersion: argoproj.io/v1alpha1
+    kind: ApplicationSet
+    metadata: {name: s, namespace: argocd}
+    spec:
+      goTemplate: true
+      generators:
+        - list:
+            elements: [{env: dev}]
+      template:
+        metadata:
+          name: 'app-{{ .env }}'
+          generateName: '{{ .env.y }}'
+          notAField: '{{ .env.y }}'
+        spec:
+          project: default
+          notAField: '{{ .env.y }}'
+          source:
+            repoURL: https://example.invalid/repo.git
+            targetRevision: HEAD
+            path: 'apps/{{ .env }}'
+            notAField: '{{ .env.y }}'
+            '{{ .env.y }}': struct keys are not rendered
+          destination: {server: https://kubernetes.default.svc, namespace: default, notAField: '{{ .env.y }}'}
+
+- name: gt-known-field-fails
+  appset: |
+    apiVersion: argoproj.io/v1alpha1
+    kind: ApplicationSet
+    metadata: {name: s, namespace: argocd}
+    spec:
+      goTemplate: true
+      generators:
+        - list:
+            elements: [{env: dev}]
+      template:
+        metadata: {name: 'app-{{ .env }}'}
+        spec:
+          project: default
+          source: {repoURL: https://example.invalid/repo.git, targetRevision: '{{ .env.y }}', path: 'apps/{{ .env }}'}
+          destination: {server: https://kubernetes.default.svc, namespace: default}
+
+- name: gt-label-key-rendered
+  appset: |
+    apiVersion: argoproj.io/v1alpha1
+    kind: ApplicationSet
+    metadata: {name: s, namespace: argocd}
+    spec:
+      goTemplate: true
+      generators:
+        - list:
+            elements: [{env: dev}]
+      template:
+        metadata:
+          name: 'app-{{ .env }}'
+          labels: {'{{ .env.y }}': value}
+        spec:
+          project: default
+          source: {repoURL: https://example.invalid/repo.git, targetRevision: HEAD, path: 'apps/{{ .env }}'}
+          destination: {server: https://kubernetes.default.svc, namespace: default}
+
+- name: gt-raw-values-object-rendered
+  appset: |
+    apiVersion: argoproj.io/v1alpha1
+    kind: ApplicationSet
+    metadata: {name: s, namespace: argocd}
+    spec:
+      goTemplate: true
+      generators:
+        - list:
+            elements: [{env: dev}]
+      template:
+        metadata: {name: 'app-{{ .env }}'}
+        spec:
+          project: default
+          source:
+            repoURL: https://example.invalid/repo.git
+            targetRevision: HEAD
+            path: 'apps/{{ .env }}'
+            helm:
+              valuesObject:
+                nested: {'{{ .env }}': ['{{ .env.y }}']}
+          destination: {server: https://kubernetes.default.svc, namespace: default}
+
+- name: gt-unknown-generator-field-not-rendered
+  files:
+    apps/dev/web/kustomization.yaml: "resources: []\n"
+  appset: |
+    apiVersion: argoproj.io/v1alpha1
+    kind: ApplicationSet
+    metadata: {name: s, namespace: argocd}
+    spec:
+      goTemplate: true
+      generators:
+        - matrix:
+            generators:
+              - list:
+                  elements: [{env: dev}]
+              - git:
+                  repoURL: https://example.invalid/repo.git
+                  revision: HEAD
+                  notAField: '{{ .env.y }}'
+                  directories: [{path: 'apps/{{ .env }}/*', notAField: '{{ .env.y }}'}]
+      template:
+        metadata: {name: '{{ .env }}-{{ .path.basename }}'}
+        spec:
+          project: default
+          source: {repoURL: https://example.invalid/repo.git, targetRevision: HEAD, path: '{{ .path.path }}'}
+          destination: {server: https://kubernetes.default.svc, namespace: default}
+
+- name: gt-missingkey-error
+  appset: |
+    apiVersion: argoproj.io/v1alpha1
+    kind: ApplicationSet
+    metadata: {name: s, namespace: argocd}
+    spec:
+      goTemplate: true
+      goTemplateOptions: ["missingkey=error"]
+      generators:
+        - list:
+            elements: [{env: dev}]
+      template:
+        metadata: {name: 'app-{{ .env }}'}
+        spec:
+          project: default
+          source: {repoURL: https://example.invalid/repo.git, targetRevision: HEAD, path: 'apps/{{ .missing }}'}
+          destination: {server: https://kubernetes.default.svc, namespace: default}
+
+- name: gt-missingkey-error-satisfied
+  appset: |
+    apiVersion: argoproj.io/v1alpha1
+    kind: ApplicationSet
+    metadata: {name: s, namespace: argocd}
+    spec:
+      goTemplate: true
+      goTemplateOptions: ["missingkey=error"]
+      generators:
+        - list:
+            elements: [{env: dev}]
+      template:
+        metadata: {name: 'app-{{ .env }}'}
+        spec:
+          project: default
+          source: {repoURL: https://example.invalid/repo.git, targetRevision: HEAD, path: 'apps/{{ .env }}'}
+          destination: {server: https://kubernetes.default.svc, namespace: default}
+
+- name: gt-invalid-option
+  appset: |
+    apiVersion: argoproj.io/v1alpha1
+    kind: ApplicationSet
+    metadata: {name: s, namespace: argocd}
+    spec:
+      goTemplate: true
+      goTemplateOptions: ["bogus"]
+      generators:
+        - list:
+            elements: [{env: dev}]
+      template:
+        metadata: {name: 'app-{{ .env }}'}
+        spec:
+          project: default
+          source: {repoURL: https://example.invalid/repo.git, targetRevision: HEAD, path: 'apps/{{ .env }}'}
+          destination: {server: https://kubernetes.default.svc, namespace: default}
+
+- name: gt-empty-params-left-as-is
+  appset: |
+    apiVersion: argoproj.io/v1alpha1
+    kind: ApplicationSet
+    metadata: {name: s, namespace: argocd}
+    spec:
+      goTemplate: true
+      generators:
+        - list:
+            elements: [{}, {env: dev}]
+      template:
+        metadata: {name: 'app-{{ .env }}'}
+        spec:
+          project: default
+          source: {repoURL: https://example.invalid/repo.git, targetRevision: HEAD, path: 'apps/{{ .env }}'}
+          destination: {server: https://kubernetes.default.svc, namespace: default}
+
+- name: gt-template-function-pipeline
+  appset: |
+    apiVersion: argoproj.io/v1alpha1
+    kind: ApplicationSet
+    metadata: {name: s, namespace: argocd}
+    spec:
+      goTemplate: true
+      generators:
+        - list:
+            elements:
+              - {cluster: Prod_EU-1, url: https://prod.invalid, apps: [web, api], replicas: 3}
+      template:
+        metadata: {name: '{{ .cluster | normalize }}-{{ index .apps 1 }}'}
+        spec:
+          project: '{{ if eq .replicas 3.0 }}prod{{ else }}default{{ end }}'
+          source:
+            repoURL: https://example.invalid/repo.git
+            targetRevision: HEAD
+            path: '{{ printf "apps/%s/%v" (lower .cluster) .replicas }}'
+          destination: {server: '{{ .url }}', namespace: '{{ default "ns" .namespace }}'}
+
+- name: gt-template-patch
+  unsupported: templatePatch
+  appset: |
+    apiVersion: argoproj.io/v1alpha1
+    kind: ApplicationSet
+    metadata: {name: s, namespace: argocd}
+    spec:
+      goTemplate: true
+      generators:
+        - list:
+            elements: [{env: dev}]
+      template:
+        metadata: {name: 'app-{{ .env }}'}
+        spec:
+          project: default
+          source: {repoURL: https://example.invalid/repo.git, targetRevision: HEAD, path: 'apps/{{ .env }}'}
+          destination: {server: https://kubernetes.default.svc, namespace: default}
+      templatePatch: |
+        spec:
+          source:
+            path: 'patched/{{ .env }}'
+
+# ---- The goTemplate example of examples/gotemplate ----
+
+- name: gt-example-platform
+  files:
+    apps/dev/guestbook/deployment.yaml: |
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: guestbook
+      spec:
+        replicas: 1
+        selector:
+          matchLabels: {app: guestbook}
+        template:
+          metadata:
+            labels: {app: guestbook}
+          spec:
+            containers:
+              - name: guestbook
+                image: guestbook:1.0.0
+    apps/dev/redis/deployment.yaml: |
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: redis
+      spec:
+        replicas: 1
+        selector:
+          matchLabels: {app: redis}
+        template:
+          metadata:
+            labels: {app: redis}
+          spec:
+            containers:
+              - name: redis
+                image: redis:1.0.0
+    apps/prod/guestbook/deployment.yaml: |
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: guestbook
+      spec:
+        replicas: 1
+        selector:
+          matchLabels: {app: guestbook}
+        template:
+          metadata:
+            labels: {app: guestbook}
+          spec:
+            containers:
+              - name: guestbook
+                image: guestbook:1.0.0
+    envs/dev/config.yaml: |
+      cluster:
+        name: dev
+        server: https://kubernetes.default.svc
+    envs/prod/config.yaml: |
+      cluster:
+        name: prod
+        server: https://prod.example.com
+  appset: |
+    apiVersion: argoproj.io/v1alpha1
+    kind: ApplicationSet
+    metadata:
+      name: platform
+      namespace: argocd
+    spec:
+      goTemplate: true
+      goTemplateOptions: ["missingkey=error"]
+      generators:
+        - matrix:
+            generators:
+              # One entry per environment, from its config file.
+              - git:
+                  repoURL: https://example.invalid/repo.git
+                  revision: HEAD
+                  files:
+                    - path: envs/*/config.yaml
+              # Every application, in each environment.
+              - list:
+                  elements:
+                    - app: guestbook
+                      port: 80
+                    - app: redis
+                      port: 6379
+      template:
+        metadata:
+          name: '{{ .app }}-{{ .path.basename | normalize }}'
+          labels:
+            env: '{{ .path.basename }}'
+            tier: '{{ if eq .app "redis" }}data{{ else }}web{{ end }}'
+        spec:
+          project: default
+          source:
+            repoURL: https://example.invalid/repo.git
+            targetRevision: HEAD
+            path: 'apps/{{ .path.basename }}/{{ .app }}'
+          destination:
+            server: '{{ .cluster.server }}'
+            namespace: '{{ printf "%s-%s" .app .cluster.name }}'
+
+- name: gt-list-quoted-scalars
+  appset: |
+    apiVersion: argoproj.io/v1alpha1
+    kind: ApplicationSet
+    metadata: {name: s, namespace: argocd}
+    spec:
+      goTemplate: true
+      generators:
+        - list:
+            elements:
+              - {env: dev, suffix: '1', kafka: 'true', mode: "yes", 'y': 'on', tags: ['no', "0755"]}
+      template:
+        metadata: {name: 'app-{{ .env }}-{{ .suffix }}-{{ .kafka }}-{{ .mode }}-{{ .y }}'}
+        spec:
+          project: default
+          source: {repoURL: https://example.invalid/repo.git, targetRevision: HEAD, path: 'apps/{{ index .tags 0 }}/{{ index .tags 1 }}'}
+          destination: {server: https://kubernetes.default.svc, namespace: default}
+
+- name: gt-matrix-second-child-quoted-scalars
+  appset: |
+    apiVersion: argoproj.io/v1alpha1
+    kind: ApplicationSet
+    metadata: {name: s, namespace: argocd}
+    spec:
+      goTemplate: true
+      generators:
+        - matrix:
+            generators:
+              - list:
+                  elements: [{env: dev}]
+              - list:
+                  elements:
+                    - {suffix: '1', name: '{{ .env }}-x', flag: 'true'}
+      template:
+        metadata: {name: 'app-{{ .name }}-{{ .suffix }}-{{ .flag }}'}
+        spec:
+          project: default
+          source: {repoURL: https://example.invalid/repo.git, targetRevision: HEAD, path: 'apps/{{ .env }}'}
+          destination: {server: https://kubernetes.default.svc, namespace: default}
+
+- name: gt-matrix-second-child-yaml11-scalar
+  unsupported_params: Kubernetes reads the manifest as YAML 1.1, this tool as YAML 1.2
+  appset: |
+    apiVersion: argoproj.io/v1alpha1
+    kind: ApplicationSet
+    metadata: {name: s, namespace: argocd}
+    spec:
+      goTemplate: true
+      generators:
+        - matrix:
+            generators:
+              - list:
+                  elements: [{env: dev}]
+              - list:
+                  elements:
+                    - {suffix: 1, name: '{{ .env }}-x', flag: yes}
+      template:
+        metadata: {name: 'app-{{ .name }}-{{ .suffix }}-{{ .flag }}'}
+        spec:
+          project: default
+          source: {repoURL: https://example.invalid/repo.git, targetRevision: HEAD, path: 'apps/{{ .env }}'}
+          destination: {server: https://kubernetes.default.svc, namespace: default}
+
+- name: gt-argo-example-matrix-list-and-list
+  appset: |
+    apiVersion: argoproj.io/v1alpha1
+    kind: ApplicationSet
+    metadata:
+      name: list-and-list
+      namespace: argocd
+    spec:
+      goTemplate: true
+      goTemplateOptions: ["missingkey=error"]
+      generators:
+        - matrix:
+            generators:
+              - list:
+                  elements:
+                    - cluster: engineering-dev
+                      url: https://kubernetes.default.svc
+                      values:
+                        project: default
+                    - cluster: engineering-prod
+                      url: https://kubernetes.default.svc
+                      values:
+                        project: default
+              - list:
+                  elements:
+                    - values:
+                        suffix: '1'
+                    - values:
+                        suffix: '2'
+      template:
+        metadata:
+          name: '{{.cluster}}-{{.values.suffix}}'
+        spec:
+          project: '{{.values.project}}'
+          source:
+            repoURL: https://github.com/argoproj/argo-cd.git
+            targetRevision: HEAD
+            path: '{{.path.path}}'
+          destination:
+            server: '{{.url}}'
+            namespace: '{{.path.basename}}'
+
+- name: gt-git-prefix-values-missingkey-error
+  files:
+    apps/web/kustomization.yaml: "resources: []\n"
+  appset: |
+    apiVersion: argoproj.io/v1alpha1
+    kind: ApplicationSet
+    metadata: {name: s, namespace: argocd}
+    spec:
+      goTemplate: true
+      goTemplateOptions: ["missingkey=error"]
+      generators:
+        - git:
+            repoURL: https://example.invalid/repo.git
+            revision: HEAD
+            pathParamPrefix: myRepo
+            directories: [{path: 'apps/*'}]
+            values:
+              cluster: '{{.path.basename}}'
+      template:
+        metadata: {name: 'app-{{ .myRepo.path.basename }}'}
+        spec:
+          project: default
+          source: {repoURL: https://example.invalid/repo.git, targetRevision: HEAD, path: '{{ .myRepo.path.path }}'}
+          destination: {server: https://kubernetes.default.svc, namespace: default}

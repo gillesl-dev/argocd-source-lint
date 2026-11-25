@@ -11,13 +11,14 @@
 //
 // It also renders single Go templates with utils.Render.Replace, the function
 // the controller calls on every string of a goTemplate ApplicationSet, and
-// lists the template functions that Argo CD's Go templates accept.
+// lists the template functions that Argo CD's Go templates accept and the
+// Unicode categories of this Go version.
 //
 // Input (stdin): {"appsets": [...], "renders": [...]}. Each appset is
 // {"appset": "<YAML>", "repo": "<checkout dir>", "newGitFileGlobbing": bool};
 // each render is {"template": "...", "params": {...}, "options": [...]}.
-// Output (stdout): {"appsets": [...], "renders": [...], "functions": [...]},
-// in the input order. An appset result is {"applications": [...]} or
+// Output (stdout): {"appsets": [...], "renders": [...], "functions": [...],
+// "categories": [...]}, in the input order. An appset result is {"applications": [...]} or
 // {"error": "..."}; a render result is {"output": "..."} or {"error": "..."}.
 package main
 
@@ -28,8 +29,10 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"reflect"
 	"sort"
 	"strings"
+	"unicode"
 
 	"github.com/Masterminds/sprig/v3"
 	"github.com/argoproj/argo-cd/v3/applicationset/controllers/template"
@@ -82,6 +85,31 @@ type application struct {
 type output struct {
 	Applications []application `json:"applications"`
 	Error        string        `json:"error,omitempty"`
+	// For a goTemplate ApplicationSet: the param sets of each top-level
+	// generator, as generators.Transform computes them, or its error.
+	Params      [][]map[string]any `json:"params,omitempty"`
+	ParamsError string             `json:"paramsError,omitempty"`
+}
+
+// params returns the param sets of each top-level generator, the input of
+// the template rendering, as GenerateApplications computes them.
+func params(appset argov1alpha1.ApplicationSet, top map[string]generators.Generator) (res [][]map[string]any, err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			res, err = nil, fmt.Errorf("panic: %v", r)
+		}
+	}()
+	res = [][]map[string]any{}
+	for _, generator := range appset.Spec.Generators {
+		results, err := generators.Transform(generator, top, appset.Spec.Template, &appset, map[string]any{}, kubeClient())
+		if err != nil {
+			return nil, err
+		}
+		for _, result := range results {
+			res = append(res, result.Params)
+		}
+	}
+	return res, nil
 }
 
 // localRepos answers the Git generator from a local checkout, whatever the
@@ -138,7 +166,14 @@ func (r localRepos) GetDirectories(_ context.Context, _, _, _ string, _, _ bool)
 	return paths, err
 }
 
-func expand(in input) output {
+func expand(in input) (res output) {
+	// A panic in the controller's code (mergo can panic on maps of different
+	// types) is reported like an error: no Application is generated.
+	defer func() {
+		if r := recover(); r != nil {
+			res.Applications, res.Error = nil, fmt.Sprintf("panic: %v", r)
+		}
+	}()
 	var appset argov1alpha1.ApplicationSet
 	// The API server receives the manifest as JSON converted by sigs.k8s.io/yaml.
 	if err := yaml.Unmarshal([]byte(in.AppSet), &appset); err != nil {
@@ -161,12 +196,21 @@ func expand(in input) output {
 		"Matrix": generators.NewMatrixGenerator(nested),
 		"Merge":  generators.NewMergeGenerator(nested),
 	}
+	if appset.Spec.GoTemplate {
+		sets, err := params(appset, top)
+		if err != nil {
+			res.ParamsError = err.Error()
+		} else {
+			res.Params = sets
+		}
+	}
 	apps, _, err := template.GenerateApplications(log.NewEntry(log.StandardLogger()), appset, top, &utils.Render{}, kubeClient())
 	if err != nil {
 		// The controller stops here: no Application is created or updated.
-		return output{Error: err.Error()}
+		res.Error = err.Error()
+		return res
 	}
-	res := output{Applications: []application{}}
+	res.Applications = []application{}
 	for _, app := range apps {
 		a := application{
 			Name:                 app.Name,
@@ -209,6 +253,127 @@ func render(in renderInput) (res renderOutput) {
 		return renderOutput{Error: err.Error()}
 	}
 	return renderOutput{Output: &out}
+}
+
+// schema describes, by reflection on Argo CD's types, the JSON fields of an
+// ApplicationSet template and of a generator: the fields the API server keeps
+// and deeplyReplace (applicationset/utils/utils.go) renders. A node is
+// {"kind": "string"} (rendered), {"kind": "other"} (not rendered),
+// {"kind": "raw"} (JSON whose strings and keys are all rendered),
+// {"kind": "list", "item": node}, {"kind": "map", "value": node} (keys
+// rendered too), or {"ref": name} for a struct in "definitions".
+func schema() map[string]any {
+	definitions := map[string]any{}
+	return map[string]any{
+		"template":    typeSchema(reflect.TypeOf(argov1alpha1.ApplicationSetTemplate{}), definitions),
+		"generator":   typeSchema(reflect.TypeOf(argov1alpha1.ApplicationSetGenerator{}), definitions),
+		"definitions": definitions,
+	}
+}
+
+var (
+	jsonUnmarshaler = reflect.TypeOf((*json.Unmarshaler)(nil)).Elem()
+	byteSlice       = reflect.TypeOf([]byte(nil))
+)
+
+func typeSchema(t reflect.Type, definitions map[string]any) map[string]any {
+	for t.Kind() == reflect.Pointer {
+		t = t.Elem()
+	}
+	switch t.Kind() {
+	case reflect.String:
+		return map[string]any{"kind": "string"}
+	case reflect.Interface:
+		return map[string]any{"kind": "raw"}
+	case reflect.Slice, reflect.Array:
+		if t == byteSlice {
+			return map[string]any{"kind": "other"}
+		}
+		return map[string]any{"kind": "list", "item": typeSchema(t.Elem(), definitions)}
+	case reflect.Map:
+		return map[string]any{"kind": "map", "value": typeSchema(t.Elem(), definitions)}
+	case reflect.Struct:
+		// Types with their own JSON decoding: apiextensionsv1.JSON and
+		// runtime.RawExtension hold raw JSON, rendered as such; others, such
+		// as metav1.Time, are not rendered (intstr.IntOrString is a string or
+		// an int, and its string is rendered).
+		if reflect.PointerTo(t).Implements(jsonUnmarshaler) || t.Implements(jsonUnmarshaler) {
+			if raw, ok := t.FieldByName("Raw"); ok && raw.Type == byteSlice {
+				return map[string]any{"kind": "raw"}
+			}
+			if _, ok := t.FieldByName("StrVal"); ok {
+				return map[string]any{"kind": "string"}
+			}
+			return map[string]any{"kind": "other"}
+		}
+		name := t.PkgPath() + "." + t.Name()
+		if _, seen := definitions[name]; !seen {
+			definitions[name] = nil // a recursive type refers to itself
+			fields := map[string]any{}
+			addFields(t, fields, definitions)
+			definitions[name] = map[string]any{"kind": "struct", "fields": fields}
+		}
+		return map[string]any{"ref": name}
+	default:
+		return map[string]any{"kind": "other"}
+	}
+}
+
+// addFields adds the JSON fields of struct t, as encoding/json names them.
+func addFields(t reflect.Type, fields map[string]any, definitions map[string]any) {
+	for i := 0; i < t.NumField(); i++ {
+		f := t.Field(i)
+		tag := f.Tag.Get("json")
+		name, options, _ := strings.Cut(tag, ",")
+		if name == "-" || (!f.IsExported() && !f.Anonymous) {
+			continue
+		}
+		if name == "" && (f.Anonymous || strings.Contains(options, "inline")) {
+			ft := f.Type
+			for ft.Kind() == reflect.Pointer {
+				ft = ft.Elem()
+			}
+			if ft.Kind() == reflect.Struct {
+				addFields(ft, fields, definitions)
+				continue
+			}
+		}
+		if name == "" {
+			name = f.Name
+		}
+		fields[name] = typeSchema(f.Type, definitions)
+	}
+}
+
+// categories gives the Unicode general category of every code point in this
+// Go version's unicode tables, which strconv.IsPrint and unicode.IsLetter
+// follow, as [first, last, category] ranges; "Cn" is unassigned.
+func categories() [][3]any {
+	names := []string{}
+	for name := range unicode.Categories {
+		// LC (Lu, Ll and Lt together) is not a general category of its own.
+		if len(name) == 2 && name != "LC" {
+			names = append(names, name)
+		}
+	}
+	sort.Strings(names)
+	ranges := [][3]any{}
+	for r := rune(0); r <= unicode.MaxRune; r++ {
+		category := "Cn"
+		for _, name := range names {
+			if unicode.Is(unicode.Categories[name], r) {
+				category = name
+				break
+			}
+		}
+		last := len(ranges) - 1
+		if last >= 0 && ranges[last][2] == category && ranges[last][1].(rune) == r-1 {
+			ranges[last][1] = r
+		} else {
+			ranges = append(ranges, [3]any{r, r, category})
+		}
+	}
+	return ranges
 }
 
 // goBuiltins are text/template's predefined functions (builtins in
@@ -254,10 +419,15 @@ func main() {
 		os.Exit(2)
 	}
 	out := struct {
-		AppSets   []output       `json:"appsets"`
-		Renders   []renderOutput `json:"renders"`
-		Functions []string       `json:"functions"`
-	}{AppSets: []output{}, Renders: []renderOutput{}, Functions: functions()}
+		AppSets    []output       `json:"appsets"`
+		Renders    []renderOutput `json:"renders"`
+		Functions  []string       `json:"functions"`
+		Categories [][3]any       `json:"categories"`
+		Schema     map[string]any `json:"schema"`
+	}{
+		AppSets: []output{}, Renders: []renderOutput{}, Functions: functions(),
+		Categories: categories(), Schema: schema(),
+	}
 	for _, appset := range in.AppSets {
 		out.AppSets = append(out.AppSets, expand(appset))
 	}

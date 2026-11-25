@@ -79,10 +79,18 @@ A revision that isn't in the checkout at all can't be checked. `phantom-target` 
   `kustomization.yaml` references; remote ones are skipped.
 - A source in another Git repository can't be inspected. It is reported as `info`.
 - The `list`, `git`, `matrix` and `merge` ApplicationSet generators are resolved locally,
-  and the Applications they produce go through every rule. `clusters`, `scmProvider`,
-  `pullRequest` and `plugin` generators, `goTemplate: true`, `templatePatch` and `selector`
-  give `unresolvable-generator` instead, and the files those Applications may deploy are
-  reported by `orphan-source` as `info`.
+  with classic `{{key}}` placeholders or `goTemplate: true`, and the Applications they
+  produce go through every rule. `clusters`, `scmProvider`, `pullRequest` and `plugin`
+  generators, `templatePatch` and `selector` give `unresolvable-generator` instead, and the
+  files those Applications may deploy are reported by `orphan-source` as `info`.
+- With `goTemplate: true`, Go templates are rendered for a subset: all of `text/template`
+  except `define`, `template` and `block`, and the 23 functions ArgoCD's examples use
+  ([list](docs/rules.md#unresolvable-generator)). Anything else gives
+  `unresolvable-generator` `info` and none of the ApplicationSet's Applications: another
+  function, a template printing `<no value>` (a missing or null value), `printf` output Go
+  prints as an error (`%!d(float64=1)`), the option `missingkey=zero`, numbers that are not
+  decimal, characters from Unicode versions newer than Go's or Python's, and `list` elements
+  Kubernetes reads differently in YAML 1.1 (unquoted `yes`, `0755`, a date).
 - Manifests are read as YAML 1.2, while Kubernetes reads them as YAML 1.1: `enabled: yes` is
   a string here but the boolean `true` for Kubernetes, so a `list` generator element written
   that way passes here and is rejected by ArgoCD. Params files and `elementsYaml` are read as

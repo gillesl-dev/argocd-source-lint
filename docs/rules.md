@@ -143,17 +143,38 @@ Fix: correct the `path`, or commit the directory it names.
 Default severity: `info`.
 
 An ApplicationSet whose Applications can't be generated from the checkout, for example: a
-`clusters`, `scmProvider`, `pullRequest` or `plugin` generator, `goTemplate: true`,
-`templatePatch`, a generator-level `selector`, a git generator on another repository or on a
-revision missing from the clone, or a template placeholder no generator sets. The
-Applications it would generate are not checked by the other rules, and `orphan-source`
-reports the files they may deploy as `info`.
+`clusters`, `scmProvider`, `pullRequest` or `plugin` generator, `templatePatch`, a
+generator-level `selector`, a git generator on another repository or on a revision missing
+from the clone, or a template placeholder no generator sets. The Applications it would
+generate are not checked by the other rules, and `orphan-source` reports the files they may
+deploy as `info`.
 
 It also reports an ApplicationSet that ArgoCD itself can't expand, which then generates no
 Application at all: a git `files` params file that isn't an object or a list of objects, a
-`list` element value that isn't a string, two `matrix` children setting one parameter to
-different values, a `merge` with fewer than two children or with two entries of one child
-sharing a merge key.
+`list` element value that isn't a string (classic templates), two `matrix` children setting
+one parameter to different values (classic templates), a `merge` with fewer than two children
+or with two entries of one child sharing a merge key, and with `goTemplate: true` a template
+whose rendering fails (an undefined function, a field of a string, `eq` between a number and
+an integer literal) or an unknown `goTemplateOptions` entry. These messages start with
+"Argo CD can't expand this ApplicationSet".
+
+With `goTemplate: true`, the template is rendered as ArgoCD renders it, field by field, for
+the fields of ArgoCD's Application type only. Supported: all of Go's `text/template` except
+`define`, `template` and `block`, and these functions:
+
+- Go: `and`, `or`, `not`, `eq`, `ne`, `index`, `printf` (verbs `s d v q t f`, flags `-`
+  and `0`);
+- sprig: `default`, `lower`, `upper`, `replace`, `trimPrefix`, `trimSuffix`, `quote`, `cat`,
+  `indent`, `base`, `dig`, `toJson`, `mustToPrettyJson`;
+- ArgoCD: `toYaml`, `normalize`, `slugify`.
+
+What this tool can't render the way ArgoCD does is reported with "not supported by this tool",
+for the whole ApplicationSet, never part of it: another function, a template printing
+`<no value>`, `printf` output that Go prints as an error, `missingkey=zero`, numbers that are
+not decimal, `lower` or `upper` of non-ASCII text, characters from recent Unicode versions in
+`quote`, `printf %q` or `toYaml` keys, `toYaml` output it can't predict (long strings folded
+outside a map, multiline strings in a list, timestamps), and `list` elements Kubernetes may
+read differently in YAML 1.1 (unquoted `yes`, `y` as a key, `0755`, a date; quoted strings are fine).
 
 An ApplicationSet comes from the repository, which may not be trusted, so its expansion has
 bounds. When one is reached, the ApplicationSet gets this finding and none of its
@@ -168,6 +189,12 @@ Applications is generated, never a partial set:
 | Size of one git `files` params file | 1 MiB |
 | Size of all the files one git `files` generator matches | 16 MiB |
 | `[`/`{` nesting in a params file or `elementsYaml` | 250 levels |
+| Length of one Go template string (`goTemplate: true`) | 64 KiB |
+| Output of one rendered string, or of one template function call | 256 KiB |
+| Output of all the strings one ApplicationSet renders | 16 MiB |
+| `range` iterations while rendering one string | 10,000 |
+| Nesting of `if`, `with`, `range` and parentheses in one string | 100 levels |
+| Template operations of one ApplicationSet (a function call counts 10, plus its size) | 1,000,000 |
 
 Fix: nothing to fix when the generator needs the cluster or an external service (`clusters`,
 `scmProvider`, `pullRequest`, `plugin`). For a placeholder without a value, a missing

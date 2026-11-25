@@ -59,7 +59,19 @@ def test_expansion_matches_argo_cd(git_repo, case):
         repo_root, get_origin_url(repo_root), Severity.INFO
     )
 
-    if expected.get("error"):
+    refused = case.get("unsupported") or case.get("unsupported_params")
+    if refused or "<no value>" in json.dumps(expected):
+        # A deliberate refusal: the whole ApplicationSet, never part of it.
+        # templatePatch keeps its own message, which baselines match.
+        reason = (
+            "`templatePatch` is not supported"
+            if "templatePatch:" in case["appset"]
+            else ("not supported by this tool")
+        )
+        assert applications == []
+        assert len(findings) == 1
+        assert reason in findings[0].message
+    elif expected.get("error"):
         # Argo CD stops: this tool must generate nothing and say why.
         assert applications == []
         assert len(findings) == 1
