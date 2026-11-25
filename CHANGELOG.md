@@ -5,6 +5,8 @@ All notable changes to this project are documented in this file, following
 
 ## [Unreleased]
 
+## [1.7.0] - 2026-11-25
+
 ### Added
 
 - `missing-prune-protection` (warning): a Namespace or CRD deployed by an Application with
