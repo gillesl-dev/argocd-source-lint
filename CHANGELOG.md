@@ -5,6 +5,8 @@ All notable changes to this project are documented in this file, following
 
 ## [Unreleased]
 
+## [1.6.0] - 2026-11-25
+
 ### Added
 
 - ApplicationSets with `goTemplate: true` are expanded, and their Applications go through
