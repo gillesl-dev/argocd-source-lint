@@ -5,6 +5,15 @@ All notable changes to this project are documented in this file, following
 
 ## [Unreleased]
 
+### Added
+
+- `missing-prune-protection` (warning): a Namespace or CRD deployed by an Application with
+  `automated.prune: true` and no `Prune=false` or `Prune=confirm` sync option. When it
+  leaves Git, ArgoCD deletes it with everything it holds, including what is not in Git.
+  `Delete=false` alone does not stop this. Only Namespaces and CRDs written as files are
+  checked, not those rendered by Helm or by a Kustomize patch. See
+  [docs/rules.md](./docs/rules.md#missing-prune-protection).
+
 ## [1.6.0] - 2026-11-25
 
 ### Added

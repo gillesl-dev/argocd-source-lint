@@ -26,6 +26,7 @@ DEFAULT_RULE_SEVERITIES: dict[str, Severity] = {
     "unknown-resource-hook": Severity.WARNING,
     "malformed-sync-wave": Severity.WARNING,
     "floating-target-revision": Severity.WARNING,
+    "missing-prune-protection": Severity.WARNING,
 }
 
 
@@ -89,6 +90,10 @@ RULE_DESCRIPTIONS: dict[str, str] = {
     "floating-target-revision": (
         "A targetRevision written as a version range, resolved again at every sync, so "
         "the deployed content can change with no commit in the repository."
+    ),
+    "missing-prune-protection": (
+        "A Namespace or CRD under automated prune without the Prune=false sync option, so "
+        "removing it from Git deletes everything it holds, including what is not in Git."
     ),
 }
 

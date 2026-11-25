@@ -58,6 +58,7 @@ from argocd_source_lint.rules.malformed_ignore_diff_pointer import (
 )
 from argocd_source_lint.rules.malformed_sync_wave import MalformedSyncWaveRule
 from argocd_source_lint.rules.missing_ignore_diff import MissingIgnoreDiffRule
+from argocd_source_lint.rules.missing_prune_protection import MissingPruneProtectionRule
 from argocd_source_lint.rules.orphan_source import (
     OrphanSourceRule,
     soften_for_skipped_files,
@@ -98,6 +99,7 @@ RULES: list[Rule] = [
     UnknownResourceHookRule(),
     MalformedSyncWaveRule(),
     FloatingTargetRevisionRule(),
+    MissingPruneProtectionRule(),
 ]
 
 

@@ -44,6 +44,9 @@ class Source(BaseModel):
     # "directory", "helm", "kustomize" or "plugin" when the source sets that
     # field, which overrides detection from the files (`ExplicitType` in Argo CD).
     explicit_type: str | None = None
+    # Whether `kustomize` sets commonAnnotations, patches or components, which
+    # Argo CD adds to the kustomization before rendering it.
+    kustomize_transforms: bool = False
     # 1-indexed start line of this source's mapping, None when unknown.
     line: int | None = None
 
@@ -91,6 +94,8 @@ class Application(BaseModel):
     sync_policy_self_heal: bool = False
     # Line of the `selfHeal` key when it is true, None when unknown.
     self_heal_line: int | None = None
+    # `automated.prune`, false when `automated.enabled` turns auto-sync off.
+    sync_policy_prune: bool = False
     ignore_differences: list[IgnoreDiffRule] = Field(default_factory=list)
     # Line of the `ignoreDifferences` key. Individual entry lines are not tracked.
     ignore_differences_line: int | None = None

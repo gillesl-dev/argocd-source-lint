@@ -77,6 +77,8 @@ def build_application(doc: dict[str, Any], manifest_path: Path, repo_root: Path)
     automated = sync_policy.get("automated") or {}
     self_heal = bool(automated.get("selfHeal", False))
     self_heal_line = _key_line(automated, "selfHeal") if self_heal else None
+    # `IsAutomatedSyncEnabled` in Argo CD's types.go: `enabled` unset means on.
+    prune = automated.get("prune") is True and automated.get("enabled") is not False
     sync_options = list(sync_policy.get("syncOptions") or [])
     sync_options_line = _key_line(sync_policy, "syncOptions") if sync_options else None
 
@@ -98,6 +100,7 @@ def build_application(doc: dict[str, Any], manifest_path: Path, repo_root: Path)
         sources=sources,
         sync_policy_self_heal=self_heal,
         self_heal_line=self_heal_line,
+        sync_policy_prune=prune,
         ignore_differences=ignore_differences,
         ignore_differences_line=ignore_differences_line,
         sync_options=sync_options,
@@ -126,6 +129,8 @@ def _ignored_rules(metadata: dict[str, Any]) -> dict[str, str]:
 def build_source(raw: dict[str, Any]) -> Source:
     helm = raw.get("helm") or {}
     directory = raw.get("directory") or {}
+    kustomize = raw.get("kustomize")
+    kustomize = kustomize if isinstance(kustomize, dict) else {}
     value_files = helm.get("valueFiles", []) or []
     return Source(
         repo_url=raw.get("repoURL", ""),
@@ -140,6 +145,9 @@ def build_source(raw: dict[str, Any]) -> Source:
         directory_include=directory.get("include"),
         directory_exclude=directory.get("exclude"),
         explicit_type=_explicit_type(raw),
+        kustomize_transforms=any(
+            kustomize.get(field) for field in ("commonAnnotations", "patches", "components")
+        ),
         line=_line_of(raw),
     )
 

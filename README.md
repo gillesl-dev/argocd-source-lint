@@ -65,6 +65,7 @@ run it from an HTTPS clone of this repository, since its Applications point at t
 | `unknown-resource-hook` | warning | An unknown ArgoCD hook or hook deletion policy value |
 | `malformed-sync-wave` | warning | A sync-wave annotation whose value isn't a valid integer |
 | `floating-target-revision` | warning | A `targetRevision` written as a version range instead of an exact pin |
+| `missing-prune-protection` | warning | A Namespace or CRD under automated prune without `Prune=false`, so removing it from Git deletes everything it holds |
 
 [docs/rules.md](./docs/rules.md) explains each rule, what ArgoCD does in that case, and how to
 fix it.
@@ -102,7 +103,10 @@ A revision that isn't in the checkout at all can't be checked. `phantom-target` 
 - The repository is read as one GitOps tree. A template repository with one tree per
   cluster gets `duplicate-application-name` for names repeated across trees, unless the
   trees are listed in `argocd_instances`.
-- Nothing that depends on the live cluster is checked.
+- Nothing that depends on the live cluster is checked. `missing-prune-protection` only sees
+  a `Prune=false` written in Git, and only on Namespaces and CRDs written as files in a
+  directory source or listed by a `kustomization.yaml` that does not patch or transform
+  them ([details](docs/rules.md#missing-prune-protection)).
 - Known false positives, to be fixed: `sourceHydrator` sources, Kustomize options set in the
   Application itself (`components`, `patches`, `namePrefix`, `nameSuffix`, `namespace`), an
   AppProject that lists destinations both by `server` and by `name`, `group: '*'` in

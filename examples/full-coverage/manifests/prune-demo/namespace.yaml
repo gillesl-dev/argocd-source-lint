@@ -1,0 +1,8 @@
+# Delete=false only applies when the Application is deleted: a prune still
+# deletes this Namespace and everything in it.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: prune-demo
+  annotations:
+    argocd.argoproj.io/sync-options: Delete=false

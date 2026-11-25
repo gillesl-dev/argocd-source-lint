@@ -476,6 +476,79 @@ separator, as in Masterminds. Whitespace runs and the spaces around commas are c
 before matching, so each separator is one character. A value over 200 characters is not
 treated as a range.
 
+## `missing-prune-protection`
+
+Read in ArgoCD v3.3.3, whose gitops-engine lives in the same repository:
+
+- Auto-sync passes `automated.prune` to the sync (`controller/appcontroller.go`,
+  `autoSync`), unless `automated.enabled: false` turns auto-sync off
+  (`SyncPolicy.IsAutomatedSyncEnabled`).
+- `pruneObject` (`gitops-engine/pkg/sync/sync_context.go`) deletes the live object unless it
+  carries `Prune=false` in `argocd.argoproj.io/sync-options`. With `Prune=confirm`, the sync
+  stays pending until the Application gets the `argocd.argoproj.io/deletion-approved`
+  annotation. The annotation is split on commas, each item trimmed and compared exactly
+  (`resource/annotations.go`).
+- `Delete=false` and `helm.sh/resource-policy: keep` are only read by `shouldBeDeleted`, when
+  the Application itself is deleted with cascade. `PruneLast` moves pruning to the last wave.
+  `compare-options: IgnoreExtraneous` only changes the sync status. `allowEmpty: false` only
+  refuses a sync that would prune every resource.
+- `CreateNamespace=true` creates the destination Namespace without tracking it. A Namespace
+  that is also in the manifests is tracked, and pruned.
+
+ArgoCD 3.4.0 (`argoproj/argo-cd#23370`) also reads `Prune` from the Application's
+`syncOptions`, as a default for resources with no `Prune` option of their own; from 3.4, the
+first `Prune=` item of the annotation wins. The rule counts the Application-level option
+unless `argocd_version` is older than 3.4.0. On the resource, it counts any `Prune=false` or
+`Prune=confirm` item. The two ArgoCD readings only differ when one annotation holds two
+`Prune` items, and the rule then picks the one that protects, so as not to warn wrongly.
+v3.6.3's `pruneObject` reads the same way.
+
+Only Namespaces and CRDs are checked: deleting them deletes objects that may not be in Git.
+Other cluster-scoped resources come back from Git at the next sync. A PersistentVolumeClaim
+can hold data too, but it is common and pruned on its own; it is left to a separate
+decision.
+
+The rule reads a resource only where the file is what ArgoCD applies: a directory source,
+or a `kustomization.yaml`'s `resources` and `bases`, recursively. `commonAnnotations` is
+applied as Kustomize does, the outermost kustomization last. Any other transform skips
+the resources it can reach, since it may add or remove the annotation: those the
+kustomization lists, nested ones included, or the whole source for the Application's own
+`kustomize` block.
+
+Unlike the other rules that read manifests, this one emits no `info` for an external
+source. `orphan-source` and `phantom-target` already report each external source of every
+Application, so a third copy per Application with automated prune only adds noise: 777
+`info` findings on one public repository with many external sources. A single aggregated
+`info` was also considered, but the per-Application suppression annotation could not
+target it, and its message would change with the count, which breaks baselines.
+
+Considered and left out: the `crds/` folder of a Helm chart, which ArgoCD installs unless
+`skipCrds: true` (`reposerver/repository/repository.go`). It is not templated, so it could be
+read as is, but third-party charts are often copied in unchanged, and their CRDs would give
+warnings their users can't fix without forking the chart.
+
+### Checked on a cluster
+
+Run once on 2026-11-25, not in CI. A kind cluster (kind v0.29.0, Kubernetes 1.33.1) with
+ArgoCD v3.3.3 installed from `manifests/install.yaml`, and a `git daemon` pod serving a
+repository with one folder per case. Each folder holds a Namespace and a ConfigMap in
+`default`, so that the Application never becomes empty. Each Application had
+`automated: {prune: true}`. After the first sync, a Secret was created by hand in each
+Namespace. Then a commit took each Namespace out of the manifests: the file renamed to
+`.off` for directory sources, its line removed from `resources` for Kustomize sources.
+After a hard refresh:
+
+| Case | Live `sync-options` before | Result |
+| --- | --- | --- |
+| `Delete=false` on the Namespace | `Delete=false` | `Pruned`: Namespace and Secret deleted |
+| `Prune=false` on the Namespace | `Prune=false` | `PruneSkipped`, "ignored (no prune)": both kept |
+| `Prune=confirm` on the Namespace | `Prune=confirm` | operation `Running`, "Waiting for pruning confirmation of v1/Namespace/...": both kept |
+| `commonAnnotations` with `Prune=false`, nothing on the Namespace | `Prune=false` | `PruneSkipped`: both kept |
+| `Prune=false` on the Namespace, `commonAnnotations` with `ServerSideApply=true` | `ServerSideApply=true` | `Pruned`: both deleted |
+| No annotation | none | `Pruned`: both deleted |
+| `Prune=false` in the Application's `syncOptions` | none | `Pruned`: both deleted |
+| `PruneLast=true` on the Namespace | `PruneLast=true` | `Pruned`: both deleted |
+
 ## `missing-ignore-diff`'s operator signatures
 
 A `known-operators.yaml` entry produces a warning that tells the user to add an

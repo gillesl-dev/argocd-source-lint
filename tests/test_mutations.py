@@ -43,6 +43,7 @@ DOCUMENTED_SEVERITIES = {
     "unknown-resource-hook": "warning",
     "malformed-sync-wave": "warning",
     "floating-target-revision": "warning",
+    "missing-prune-protection": "warning",
 }
 
 
@@ -107,6 +108,13 @@ def _project(name: str, namespaces: list[str]) -> str:
 
 def _configmap(name: str) -> str:
     return f"apiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: {name}\ndata:\n  key: value\n"
+
+
+def _namespace(name: str, sync_options: str | None = None) -> str:
+    text = f"apiVersion: v1\nkind: Namespace\nmetadata:\n  name: {name}\n"
+    if sync_options:
+        text += f'  annotations:\n    argocd.argoproj.io/sync-options: "{sync_options}"\n'
+    return text
 
 
 def _list_appset(name: str, namespace: str, elements: list[tuple[str, str]], path: str) -> str:
@@ -366,12 +374,49 @@ POSITIVE_CASES = [
         },
         "floating-target-revision",
     ),
+    Case(
+        "missing-prune-protection",
+        {"manifests/web/namespace.yaml": _namespace("team-ns", "Delete=false")},
+        "missing-prune-protection",
+    ),
 ]
 
 # Each one guards a fixed false positive: keep them even if they look
 # redundant with the rules' unit tests.
 NEGATIVE_CASES = [
     Case("clean base"),
+    # A protection set by an outer kustomization reaches a nested base.
+    Case(
+        "namespace protected by commonAnnotations of an outer kustomization",
+        {
+            "apps/kust.yaml": _app("kust", path="manifests/kust", dest_ns="ns-a"),
+            "manifests/kust/kustomization.yaml": (
+                "resources:\n  - ../kbase\ncommonAnnotations:\n"
+                '  argocd.argoproj.io/sync-options: "Prune=false,Delete=false"\n'
+            ),
+            "manifests/kbase/kustomization.yaml": "resources:\n  - namespace.yaml\n",
+            "manifests/kbase/namespace.yaml": _namespace("ns-a"),
+        },
+    ),
+    # A Namespace file used as a patch is not deployed.
+    Case(
+        "namespace used as a kustomize patch",
+        {
+            "apps/kust.yaml": _app("kust", path="manifests/kust", dest_ns="ns-a"),
+            "manifests/kust/kustomization.yaml": (
+                "resources:\n  - cm.yaml\npatches:\n  - path: namespace.yaml\n"
+            ),
+            "manifests/kust/cm.yaml": _configmap("kust"),
+            "manifests/kust/namespace.yaml": _namespace("ns-a"),
+        },
+    ),
+    Case(
+        "namespace protected by the application-level prune option",
+        {
+            "apps/web.yaml": _app("web", sync_options=("Prune=false",)),
+            "manifests/web/namespace.yaml": _namespace("team-ns"),
+        },
+    ),
     # The same file deployed to two namespaces is two resources.
     Case(
         "applicationset fan-out to two namespaces",

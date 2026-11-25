@@ -23,6 +23,7 @@ ArgoCD sources, is in [DESIGN.md](../DESIGN.md).
 - [unknown-resource-hook](#unknown-resource-hook)
 - [malformed-sync-wave](#malformed-sync-wave)
 - [floating-target-revision](#floating-target-revision)
+- [missing-prune-protection](#missing-prune-protection)
 
 ## Suppressing a finding
 
@@ -369,3 +370,64 @@ in this repository. Exact versions (`1.2.3`, `=1.2.3`), branch names and `HEAD` 
 reported.
 
 Fix: pin an exact version or tag.
+
+## missing-prune-protection
+
+Default severity: `warning`.
+
+A Namespace or a CustomResourceDefinition deployed by an Application with
+`syncPolicy.automated.prune: true`, without `Prune=false` or `Prune=confirm` in its
+`argocd.argoproj.io/sync-options` annotation. If the resource leaves the rendered manifests,
+for example after a file is deleted or a `kustomization.yaml` line removed, ArgoCD deletes
+it at the next sync. Kubernetes then deletes what it holds: every object in the Namespace,
+including Secrets and volumes created by hand, or every custom resource of the CRD's kind in
+the cluster.
+
+What stops the prune:
+
+| Setting | Stops the prune |
+| --- | --- |
+| `Prune=false` on the resource | yes, the resource is left in place |
+| `Prune=confirm` on the resource | yes, the sync waits until someone confirms |
+| `Prune=false` or `Prune=confirm` in the Application's `syncOptions` | from ArgoCD 3.4.0 only, and only for resources with no `Prune` option of their own |
+| `Delete=false`, `helm.sh/resource-policy: keep` | no, they only apply when the Application itself is deleted |
+| `PruneLast=true` | no, it only moves the deletion to the end of the sync |
+
+Option names and values are case-sensitive: `Prune=False` protects nothing. When
+`argocd_version` in `.argocd-lint.yaml` is older than 3.4.0, an Application-level `Prune`
+option is not counted; when it is unset, it is.
+
+Only resources written in Git as they are deployed are checked: the files of a directory
+source, and those a `kustomization.yaml` lists under `resources`, followed into nested
+kustomizations. A kustomization's `commonAnnotations` replaces the resource's own
+annotation, as Kustomize does. Not checked, and not reported:
+
+- Helm charts, config management plugins and Jsonnet, which this tool does not render. This
+  includes the `crds/` folder of a chart.
+- The resources of a kustomization that uses `patches`, `patchesStrategicMerge`,
+  `patchesJson6902`, `components`, `transformers`, `replacements`, `generators` or
+  `helmCharts`, including those of the kustomizations it lists, and every resource of a
+  source whose Application sets `kustomize.commonAnnotations`, `patches` or `components`:
+  the rendered annotation may differ from the file.
+- Sources in another Git repository. Unlike other rules, this one adds no `info` for them:
+  `orphan-source` and `phantom-target` already report each of them.
+- A protection added on the cluster only, for example with `kubectl annotate`. ArgoCD reads
+  the live object, so it does protect, but this tool can't see it: write it in Git, or
+  suppress the finding.
+
+The finding points to the resource's file and line. To suppress it, put the
+`argocd-source-lint/ignore-missing-prune-protection` annotation on the Application, or in
+an ApplicationSet's template.
+
+Fix:
+
+```yaml
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: team
+  annotations:
+    argocd.argoproj.io/sync-options: Prune=false
+```
+
+`Prune=false,Delete=false` also keeps the Namespace when the Application itself is deleted.
